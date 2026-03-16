@@ -208,6 +208,59 @@
     <string name="config_security_private_key">Used to create a shared key with a remote device.</string>
     <string name="config_security_public_key">Generated from your private key and sent out to other nodes on the mesh to allow them to compute a shared secret key.</string>
     <string name="config_security_serial_enabled">Serial Console over the Stream API.</string>
+    <string name="config_security_debug_log_api_enabled">Output live debug logging over serial, view and export position-redacted device logs over Bluetooth.</string>
+
+    <!-- Position Config -->
+    <string name="position_packet">Position Packet</string>
+    <string name="broadcast_interval">Broadcast Interval</string>
+    <string name="smart_position">Smart Position</string>
+    <string name="minimum_interval">Smart Interval</string>
+    <string name="minimum_distance">Smart Distance</string>
+    <string name="device_gps">Device GPS</string>
+    <string name="fixed_position">Fixed Position</string>
+    <string name="altitude">Altitude</string>
+    <string name="update_interval">GPS Polling Interval</string>
+    <string name="advanced_device_gps">Advanced Device GPS</string>
+    <string name="gps_receive_gpio">GPS Receive GPIO</string>
+    <string name="gps_transmit_gpio">GPS Transmit GPIO</string>
+    <string name="gps_en_gpio">GPS EN GPIO</string>
+    <string name="gpio">GPIO</string>
+    <string name="debug">Debug</string>
+
+    <string name="elevation_suffix" translatable="false">MSL</string>
+    <string name="channel_air_util" translatable="false">ChUtil %.1f%% AirUtilTX %.1f%%</string>
+
+    <string name="channel">Ch</string>
+    <string name="channel_name">Channel Name</string>
+    <string name="qr_code">QR code</string>
+    <string name="unknown_username">Unknown Username</string>
+    <string name="send">Send</string>
+    <string name="attachment">Attachment</string>
+    <string name="attach_image">Image</string>
+    <string name="attach_file">File</string>
+    <string name="warning_not_paired">You haven't yet paired a Meshtastic compatible radio with this phone. Please pair a device and set your username.\n\nThis open-source application is in development, if you find problems please post on our forum: https://github.com/orgs/meshtastic/discussions.\n\nFor more information see our web page - www.meshtastic.org.</string>
+    <string name="you">You</string>
+    <string name="analytics_okay">Allow analytics and crash reporting.</string>
+    <string name="accept">Accept</string>
+    <string name="cancel">Cancel</string>
+    <string name="discard_changes">Discard</string>
+    <string name="save_changes">Save</string>
+    <string name="new_channel_rcvd">New Channel URL received</string>
+    <string name="permission_missing">Meshtastic needs location permissions enabled to find new devices via Bluetooth. You can disable when not in use.</string>
+    <string name="report_bug">Report Bug</string>
+    <string name="report_a_bug">Report a bug</string>
+    <string name="report_bug_text">Are you sure you want to report a bug? After reporting, please post in https://github.com/orgs/meshtastic/discussions so we can match up the report with what you found.</string>
+    <string name="report">Report</string>
+    <string name="pairing_completed">Pairing completed, starting service</string>
+    <string name="pairing_failed_try_again">Pairing failed, please select again</string>
+    <string name="location_disabled">Location access is turned off, can not provide position to mesh.</string>
+    <string name="share">Share</string>
+    <string name="new_node_seen">New Node Seen: %1$s</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="device_sleeping">Device sleeping</string>
+    <string name="connected_count">Connected: %1$s online</string>
+    <string name="ip_address">IP Address:</string>
+    <string name="ip_port">Port:</string>
     <string name="configure_bluetooth_permissions">Configure Bluetooth Permissions</string>
     <string name="configure_critical_alerts">Configure Critical Alerts</string>
     <string name="configure_location_permissions">Configure Location Permissions</string>
