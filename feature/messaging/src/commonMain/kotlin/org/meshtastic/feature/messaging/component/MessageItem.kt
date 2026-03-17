@@ -77,6 +77,12 @@ import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.core.ui.theme.MessageItemColors
 import org.meshtastic.core.ui.util.createClipEntry
 
+private fun Message.isImageChunk(): Boolean {
+    val result = text.matches(Regex("^IMG:[^|]+\\|PART:\\d+/\\d+\\|DATA:.+$"))
+    println("isImageChunk for '${text.take(50)}...': $result")
+    return result
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
@@ -101,6 +107,7 @@ fun MessageItem(
     onClickChip: (Node) -> Unit = {},
     onNavigateToOriginalMessage: (Int) -> Unit = {},
     onStatusClick: () -> Unit = {},
+    onDecodeImage: () -> Unit = {},
     hasSamePrev: Boolean = false,
     hasSameNext: Boolean = false,
 ) = Column(
@@ -158,6 +165,8 @@ fun MessageItem(
                             null
                         },
                         onStatus = onStatusClick,
+                        isImageChunk = true, // message.isImageChunk(),
+                        onDecodeImage = { onDecodeImage(); activeSheet = null },
                     )
                 }
 
@@ -234,6 +243,7 @@ fun MessageItem(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
+                    println("Long click on message: ${message.text.take(50)}...")
                     onLongClick()
                     if (!inSelectionMode) {
                         activeSheet = ActiveSheet.Actions

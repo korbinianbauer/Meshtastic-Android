@@ -26,6 +26,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Reply
+import androidx.compose.material.icons.rounded.AddReaction
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.SelectAll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +56,7 @@ import org.meshtastic.core.resources.action_select_message
 import org.meshtastic.core.resources.action_send_reply
 import org.meshtastic.core.resources.action_show_message_status
 import org.meshtastic.core.resources.copy
+import org.meshtastic.core.resources.decode_image
 import org.meshtastic.core.resources.delete
 import org.meshtastic.core.resources.device_metrics_label_value
 import org.meshtastic.core.resources.message_delivery_status
@@ -72,6 +80,8 @@ fun MessageActionsContent(
     onCopy: () -> Unit,
     onSelect: () -> Unit,
     onDelete: () -> Unit,
+    isImageChunk: Boolean = false,
+    onDecodeImage: () -> Unit = {},
     statusString: Pair<StringResource, StringResource>? = null,
     status: MessageStatus? = null,
     onStatus: (() -> Unit),
@@ -110,6 +120,15 @@ fun MessageActionsContent(
                 onClick = onReply,
             ),
         )
+
+        if (isImageChunk) {
+            println("Adding decode image option")
+            ListItem(
+                headlineContent = { Text(stringResource(Res.string.decode_image)) },
+                leadingContent = { Icon(Icons.Rounded.Image, contentDescription = stringResource(Res.string.decode_image)) },
+                modifier = Modifier.clickable(onClick = onDecodeImage),
+            )
+        }
 
         ListItem(
             headlineContent = { Text(stringResource(Res.string.copy)) },
