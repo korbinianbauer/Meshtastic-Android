@@ -47,6 +47,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -124,13 +125,13 @@ import org.meshtastic.core.resources.decode_image_saved
 import org.meshtastic.core.resources.decode_image_searching
 import org.meshtastic.core.resources.message_input_label
 import org.meshtastic.core.resources.save
+import org.meshtastic.core.resources.cancel
 import org.meshtastic.core.resources.send
 import org.meshtastic.core.resources.type_a_message
 import org.meshtastic.core.resources.unknown_channel
 import org.meshtastic.core.resources.attachment
 import org.meshtastic.core.resources.attach_file
 import org.meshtastic.core.resources.attach_image
-import org.meshtastic.core.resources.cancel
 import org.meshtastic.core.resources.image_adjustment_chunk_delay
 import org.meshtastic.core.resources.image_adjustment_chunk_delay_value
 import org.meshtastic.core.resources.image_adjustment_number_of_chunks
@@ -213,6 +214,7 @@ fun MessageScreen(
     val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
     val channels by viewModel.channels.collectAsStateWithLifecycle()
     val quickChatActions by viewModel.quickChatActions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val isSendingChunks by viewModel.isSendingChunks.collectAsStateWithLifecycle()
     val pagedMessages = viewModel.getMessagesFromPaged(contactKey).collectAsLazyPagingItems()
     val contactSettings by viewModel.contactSettings.collectAsStateWithLifecycle(initialValue = emptyMap())
     val homoglyphEncodingEnabled by viewModel.homoglyphEncodingEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -556,6 +558,7 @@ fun MessageScreen(
                 )
                 MessageInput(
                     isEnabled = connectionState is ConnectionState.Connected,
+                    isSendingChunks = isSendingChunks,
                     isHomoglyphEncodingEnabled = homoglyphEncodingEnabled,
                     textFieldState = messageInputState,
                     onSendMessage = {
@@ -565,6 +568,7 @@ fun MessageScreen(
                         }
                     },
                     onSendChunk = { chunk -> onEvent(MessageScreenEvent.SendMessage(chunk, null)) },
+                    onStopSendingChunks = viewModel::stopSendingChunks,
                     viewModel = viewModel,
                     contactKey = contactKey
                 )
@@ -997,6 +1001,7 @@ private fun ImageAdjustmentDialog(
 @Composable
 private fun MessageInput(
     isEnabled: Boolean,
+    isSendingChunks: Boolean = false,
     isHomoglyphEncodingEnabled: Boolean,
     textFieldState: TextFieldState,
     modifier: Modifier = Modifier,
@@ -1005,6 +1010,7 @@ private fun MessageInput(
     viewModel: MessageViewModel?,
     contactKey: String,
     onSendChunk: ((String) -> Unit)? = null,
+    onStopSendingChunks: () -> Unit = {},
 ) {
     val currentTextRaw = textFieldState.text.toString()
 
@@ -1026,8 +1032,8 @@ private fun MessageInput(
 
     var showAttachmentMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isEnabled) {
-        if (!isEnabled) {
+    LaunchedEffect(isEnabled, isSendingChunks) {
+        if (!isEnabled && !isSendingChunks) {
             showAttachmentMenu = false
         }
     }
@@ -1062,18 +1068,24 @@ private fun MessageInput(
         isError = isOverLimit,
         placeholder = { Text(stringResource(Res.string.type_a_message)) },
         leadingIcon = {
-            IconButton(
-                onClick = {
-                    if (isEnabled) {
-                        showAttachmentMenu = true
-                    }
-                },
-                enabled = isEnabled,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.AttachFile,
-                    contentDescription = stringResource(Res.string.attachment),
-                )
+            if (isSendingChunks) {
+                IconButton(onClick = { showAttachmentMenu = true }, enabled = true) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                IconButton(
+                    onClick = {
+                        if (isEnabled) {
+                            showAttachmentMenu = true
+                        }
+                    },
+                    enabled = isEnabled,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AttachFile,
+                        contentDescription = stringResource(Res.string.attachment),
+                    )
+                }
             }
         },
         keyboardOptions =
@@ -1107,20 +1119,30 @@ private fun MessageInput(
     )
 
     DropdownMenu(
-        expanded = showAttachmentMenu && isEnabled,
+        expanded = showAttachmentMenu && (isEnabled || isSendingChunks),
         onDismissRequest = { showAttachmentMenu = false }
     ) {
-        DropdownMenuItem(
-            text = { Text(stringResource(Res.string.attach_image)) },
-            onClick = { 
-                showAttachmentMenu = false
-                imagePickerLauncher.launch("image/*")
-            }
-        )
-        DropdownMenuItem(
-            text = { Text(stringResource(Res.string.attach_file)) },
-            onClick = { showAttachmentMenu = false }
-        )
+        if (isSendingChunks) {
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.cancel)) },
+                onClick = {
+                    showAttachmentMenu = false
+                    onStopSendingChunks()
+                }
+            )
+        } else {
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.attach_image)) },
+                onClick = {
+                    showAttachmentMenu = false
+                    imagePickerLauncher.launch("image/*")
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(Res.string.attach_file)) },
+                onClick = { showAttachmentMenu = false }
+            )
+        }
     }
 
     val coroutineScope = rememberCoroutineScope()
