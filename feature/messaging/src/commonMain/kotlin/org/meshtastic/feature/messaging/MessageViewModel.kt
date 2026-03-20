@@ -224,8 +224,8 @@ class MessageViewModel(
         safeLaunch(tag = "sendMessage") { sendMessageUseCase.invoke(str, contactKey, replyId) }
     }
 
-    fun sendMessageChunks(
-        chunks: List<String>,
+    fun sendChunkedPayloadChunks(
+        chunks: List<ByteArray>,
         contactKey: String = "0${DataPacket.ID_BROADCAST}",
         delayMillis: Int,
     ) {
@@ -238,7 +238,7 @@ class MessageViewModel(
                 _isSendingChunks.value = true
                 try {
                     chunks.forEachIndexed { index, chunk ->
-                        sendMessageUseCase.invoke(chunk, contactKey, null)
+                        sendMessageUseCase.sendPrivateAppPayload(chunk, contactKey)
                         if (index < chunks.lastIndex) {
                             delay(delayMillis.toLong())
                         }

@@ -105,6 +105,7 @@ class MeshDataHandlerImpl(
             PortNum.ALERT_APP.value,
             PortNum.WAYPOINT_APP.value,
             PortNum.NODE_STATUS_APP.value,
+            PortNum.PRIVATE_APP.value,
         )
 
     override fun handleReceivedData(packet: MeshPacket, myNodeNum: Int, logUuid: String?, logInsertJob: Job?) {
@@ -198,6 +199,7 @@ class MeshDataHandlerImpl(
             PortNum.ATAK_FORWARDER,
             PortNum.PRIVATE_APP,
             -> {
+                rememberDataPacket(dataPacket, myNodeNum)
                 shouldBroadcast = true
             }
 
