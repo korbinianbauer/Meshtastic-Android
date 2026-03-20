@@ -26,11 +26,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.FormatQuote
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.semantics.Role
@@ -89,6 +96,7 @@ fun MessageItem(
     ourNode: Node,
     message: Message,
     inlineImageBitmap: ImageBitmap? = null,
+    inlineImageChunkInfoText: String? = null,
     selected: Boolean,
     inSelectionMode: Boolean = false,
     onReply: () -> Unit = {},
@@ -106,6 +114,7 @@ fun MessageItem(
     onNavigateToOriginalMessage: (Int) -> Unit = {},
     onStatusClick: () -> Unit = {},
     onDecodeImage: () -> Unit = {},
+    onInlineImageClick: () -> Unit = {},
     hasSamePrev: Boolean = false,
     hasSameNext: Boolean = false,
 ) = Column(
@@ -277,10 +286,31 @@ fun MessageItem(
                 }
 
                 inlineImageBitmap?.let { imageBitmap ->
+                    val imageAspectRatio =
+                        if (imageBitmap.height > 0) {
+                            imageBitmap.width.toFloat() / imageBitmap.height.toFloat()
+                        } else {
+                            1f
+                        }
                     Image(
                         bitmap = imageBitmap,
                         contentDescription = "Image message",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        contentScale = ContentScale.Fit,
+                        modifier =
+                            Modifier.padding(top = 4.dp)
+                                .widthIn(min = 180.dp, max = 320.dp)
+                                .heightIn(min = 140.dp, max = 360.dp)
+                                .clickable(onClick = onInlineImageClick)
+                                .aspectRatio(imageAspectRatio, matchHeightConstraintsFirst = false),
+                    )
+                }
+
+                inlineImageChunkInfoText?.let { chunkInfoText ->
+                    Text(
+                        text = chunkInfoText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
 
