@@ -21,6 +21,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -214,6 +216,24 @@ class MessageViewModel(
      */
     fun sendMessage(str: String, contactKey: String = "0${DataPacket.ID_BROADCAST}", replyId: Int? = null) {
         safeLaunch(tag = "sendMessage") { sendMessageUseCase.invoke(str, contactKey, replyId) }
+    }
+
+    fun sendMessageChunks(
+        chunks: List<String>,
+        contactKey: String = "0${DataPacket.ID_BROADCAST}",
+        delayMillis: Int,
+    ) {
+        if (chunks.isEmpty()) {
+            return
+        }
+        viewModelScope.launch {
+            chunks.forEachIndexed { index, chunk ->
+                sendMessageUseCase.invoke(chunk, contactKey, null)
+                if (index < chunks.lastIndex) {
+                    delay(delayMillis.toLong())
+                }
+            }
+        }
     }
 
     fun sendReaction(emoji: String, replyId: Int, contactKey: String) = safeLaunch(tag = "sendReaction") {
