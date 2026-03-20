@@ -1026,6 +1026,12 @@ private fun MessageInput(
 
     var showAttachmentMenu by remember { mutableStateOf(false) }
 
+    LaunchedEffect(isEnabled) {
+        if (!isEnabled) {
+            showAttachmentMenu = false
+        }
+    }
+
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     var selectedSize by remember { mutableStateOf(128) }
@@ -1056,7 +1062,14 @@ private fun MessageInput(
         isError = isOverLimit,
         placeholder = { Text(stringResource(Res.string.type_a_message)) },
         leadingIcon = {
-            IconButton(onClick = { showAttachmentMenu = true }) {
+            IconButton(
+                onClick = {
+                    if (isEnabled) {
+                        showAttachmentMenu = true
+                    }
+                },
+                enabled = isEnabled,
+            ) {
                 Icon(
                     imageVector = Icons.Filled.AttachFile,
                     contentDescription = stringResource(Res.string.attachment),
@@ -1094,7 +1107,7 @@ private fun MessageInput(
     )
 
     DropdownMenu(
-        expanded = showAttachmentMenu,
+        expanded = showAttachmentMenu && isEnabled,
         onDismissRequest = { showAttachmentMenu = false }
     ) {
         DropdownMenuItem(
