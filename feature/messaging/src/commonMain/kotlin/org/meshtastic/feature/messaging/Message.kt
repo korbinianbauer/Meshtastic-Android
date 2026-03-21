@@ -98,7 +98,6 @@ import org.meshtastic.core.resources.send
 import org.meshtastic.core.resources.type_a_message
 import org.meshtastic.core.resources.unknown_channel
 import org.meshtastic.core.resources.attachment
-import org.meshtastic.core.resources.attach_file
 import org.meshtastic.core.resources.attach_image
 import org.meshtastic.core.ui.component.SharedContactDialog
 import org.meshtastic.core.ui.component.smartScrollToIndex
@@ -620,10 +619,6 @@ private fun MessageInput(
                     showAttachmentMenu = false
                     imagePickerLauncher.launch("image/*")
                 }
-            )
-            DropdownMenuItem(
-                text = { Text(stringResource(Res.string.attach_file)) },
-                onClick = { showAttachmentMenu = false }
             )
         }
     }
