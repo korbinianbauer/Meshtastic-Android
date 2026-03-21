@@ -240,6 +240,7 @@ fun MessageItem(
             )
         }
     }
+    val isPrivateImageChunk = message.privatePayloadId != null && message.privateChunkIndex != null
     Surface(
         modifier =
         Modifier.align(if (message.fromLocal) Alignment.End else Alignment.Start)
@@ -277,7 +278,7 @@ fun MessageItem(
             )
 
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
-                if (inlineImageBitmap == null) {
+                if (inlineImageBitmap == null && !isPrivateImageChunk) {
                     AutoLinkText(
                         text = message.text,
                         style = MaterialTheme.typography.bodyLarge,
@@ -300,7 +301,15 @@ fun MessageItem(
                             Modifier.padding(top = 4.dp)
                                 .widthIn(min = 180.dp, max = 320.dp)
                                 .heightIn(min = 140.dp, max = 360.dp)
-                                .clickable(onClick = onInlineImageClick)
+                                .combinedClickable(
+                                    onClick = onInlineImageClick,
+                                    onLongClick = {
+                                        onLongClick()
+                                        if (!inSelectionMode) {
+                                            activeSheet = ActiveSheet.Actions
+                                        }
+                                    },
+                                )
                                 .aspectRatio(imageAspectRatio, matchHeightConstraintsFirst = false),
                     )
                 }
