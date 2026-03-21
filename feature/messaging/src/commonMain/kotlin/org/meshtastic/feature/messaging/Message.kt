@@ -77,7 +77,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.PreviewLightDark
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import kotlinx.coroutines.launch
@@ -413,7 +412,6 @@ fun MessageScreen(
                 MessageListPagedState(
                     nodes = nodes,
                     ourNode = ourNode,
-                    messages = pagedMessages,
                     timelineMessages = timelineMessages,
                     imageChunkMessages = imageChunkMessages,
                     selectedIds = selectedMessageIds,
