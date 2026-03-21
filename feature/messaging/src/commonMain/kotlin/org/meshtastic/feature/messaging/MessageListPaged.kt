@@ -78,7 +78,6 @@ internal data class MessageListHandlers(
     val onDeleteMessages: (List<Long>) -> Unit,
     val onSendMessage: (String, String) -> Unit,
     val onReply: (Message?) -> Unit,
-    val onDecodeImage: (Message) -> Unit,
 )
 
 internal data class MessageListPagedState(
@@ -385,7 +384,6 @@ private fun RenderPagedChatMessageRow(
                 }
             }
         },
-        onDecodeImage = { handlers.onDecodeImage(message) },
         onInlineImageClick = {
             message.privatePayloadId?.let { payloadId ->
                 onInlineImageClick(payloadId, message.node.num)
