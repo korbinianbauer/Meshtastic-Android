@@ -88,6 +88,7 @@ internal data class MessageListPagedState(
     val nodes: List<Node>,
     val ourNode: Node?,
     val messages: LazyPagingItems<Message>,
+    val timelineMessages: List<Message>,
     val imageChunkMessages: List<Message>,
     val selectedIds: MutableState<Set<Long>>,
     val contactKey: String,
@@ -169,12 +170,12 @@ internal fun MessageListPaged(
     val hasDialogOpen = showStatusDialog != null || showReactionDialog != null
 
     // Track unread count based on scroll position
-    UpdateUnreadCountPaged(listState = listState, messages = state.messages, onUnreadChange = handlers.onUnreadChanged)
+    UpdateUnreadCountPaged(listState = listState, messages = state.timelineMessages, onUnreadChange = handlers.onUnreadChanged)
 
     // Auto-scroll to bottom when new messages arrive
     AutoScrollToBottomPaged(
         listState = listState,
-        messages = state.messages,
+        messages = state.timelineMessages,
         hasUnreadMessages = state.hasUnreadMessages,
         hasDialogOpen = hasDialogOpen,
     )
@@ -212,20 +213,7 @@ private fun MessageListPagedContent(
     val privateImageDecodeCache = remember { mutableMapOf<String, PrivateImageDecodeCacheEntry>() }
     var expandedImageSelection by remember { mutableStateOf<ExpandedTimelineImageSelection?>(null) }
 
-    val currentLoadedMessages by
-        remember(state.messages.itemCount) {
-            derivedStateOf { state.messages.itemSnapshotList.items.filterNotNull() }
-        }
-    val refreshLoading = state.messages.loadState.refresh is LoadState.Loading
-    var renderedMessages by remember { mutableStateOf<List<Message>>(emptyList()) }
-
-    LaunchedEffect(currentLoadedMessages, refreshLoading) {
-        if (renderedMessages.isEmpty() || !refreshLoading) {
-            renderedMessages = currentLoadedMessages
-        }
-    }
-
-    val displayedMessages = if (renderedMessages.isNotEmpty()) renderedMessages else currentLoadedMessages
+    val displayedMessages = state.timelineMessages
 
     val privateImageRenderState by
         remember(state.imageChunkMessages) {
@@ -389,22 +377,6 @@ private fun MessageListPagedContent(
                     }
                 }
             }
-
-            // Loading indicator at the end (top when reversed) when loading more items
-            state.messages.apply {
-                when {
-                    loadState.append is LoadState.Loading -> {
-                        item(key = "append_loading", contentType = "loading") {
-                            Box(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -507,7 +479,7 @@ private fun RenderPagedChatMessageRow(
 @Composable
 private fun AutoScrollToBottomPaged(
     listState: LazyListState,
-    messages: LazyPagingItems<Message>,
+    messages: List<Message>,
     hasUnreadMessages: Boolean,
     hasDialogOpen: Boolean = false,
     itemThreshold: Int = 3,
@@ -541,10 +513,11 @@ private fun AutoScrollToBottomPaged(
     // Consolidated scroll logic to prevent race conditions
     // Fixes issue where multiple scroll operations could trigger simultaneously
     // by unifying all scroll triggers into a single LaunchedEffect
-    LaunchedEffect(messages.itemCount) {
+    val newestMessageUuid by remember(messages) { derivedStateOf { messages.firstOrNull()?.uuid } }
+    LaunchedEffect(newestMessageUuid) {
         // Use cached position (captured when scroll was idle) to decide if we should auto-scroll
         // This prevents race conditions where new message renders before we check position
-        if (cachedAtBottom && messages.itemCount > 0) {
+        if (cachedAtBottom && messages.isNotEmpty()) {
             scrollToItem(0)
             // Update cache immediately after scrolling
             cachedAtBottom = true
@@ -552,22 +525,20 @@ private fun AutoScrollToBottomPaged(
     }
 }
 
-private fun findFirstVisibleUnreadMessage(messages: LazyPagingItems<Message>, visibleIndex: Int): Message? {
-    val snapshot = messages.itemSnapshotList
-    if (visibleIndex >= snapshot.size) return null
+private fun findFirstVisibleUnreadMessage(messages: List<Message>, visibleIndex: Int): Message? {
+    if (visibleIndex >= messages.size) return null
     val firstVisibleUnreadIndex =
-        (visibleIndex until snapshot.size).firstOrNull { i ->
-            val msg = snapshot[i]
-            msg != null && !msg.read && !msg.fromLocal
+        (visibleIndex until messages.size).firstOrNull { i ->
+            val msg = messages[i]
+            !msg.read && !msg.fromLocal
         }
-    return firstVisibleUnreadIndex?.let { snapshot[it] }
+    return firstVisibleUnreadIndex?.let { messages[it] }
 }
 
-private fun findLastUnreadMessageIndex(messages: LazyPagingItems<Message>): Int? {
-    val snapshot = messages.itemSnapshotList
-    return (0 until snapshot.size).lastOrNull { i ->
-        val msg = snapshot[i]
-        msg != null && !msg.read && !msg.fromLocal
+private fun findLastUnreadMessageIndex(messages: List<Message>): Int? {
+    return (0 until messages.size).lastOrNull { i ->
+        val msg = messages[i]
+        !msg.read && !msg.fromLocal
     }
 }
 
@@ -575,7 +546,7 @@ private fun findLastUnreadMessageIndex(messages: LazyPagingItems<Message>): Int?
 @Composable
 private fun UpdateUnreadCountPaged(
     listState: LazyListState,
-    messages: LazyPagingItems<Message>,
+    messages: List<Message>,
     onUnreadChange: (Long, Long) -> Unit,
 ) {
     val currentOnUnreadChange by rememberUpdatedState(onUnreadChange)
@@ -589,9 +560,8 @@ private fun UpdateUnreadCountPaged(
 
     // Track remote message count to restart effect when remote messages change
     // This fixes race condition when sending/receiving messages during debounce period
-    // Optimized: Use itemSnapshotList instead of iterating through indices
     val remoteMessageCount by
-        remember(messages.itemCount) { derivedStateOf { messages.itemSnapshotList.items.count { !it.fromLocal } } }
+        remember(messages) { derivedStateOf { messages.count { !it.fromLocal } } }
 
     // Mark messages as read after debounce period
     // Handles both scrolling cases and when all unread messages are visible without scrolling

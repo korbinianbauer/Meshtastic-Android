@@ -163,6 +163,7 @@ fun MessageScreen(
     val quickChatActions by viewModel.quickChatActions.collectAsStateWithLifecycle(initialValue = emptyList())
     val isSendingChunks by viewModel.isSendingChunks.collectAsStateWithLifecycle()
     val pagedMessages = viewModel.getMessagesFromPaged(contactKey).collectAsLazyPagingItems()
+    val timelineMessages by viewModel.getMessagesFlow(contactKey).collectAsStateWithLifecycle(initialValue = emptyList())
     val imageChunkMessages by viewModel.imageChunkMessages.collectAsStateWithLifecycle()
     val contactSettings by viewModel.contactSettings.collectAsStateWithLifecycle(initialValue = emptyMap())
     val homoglyphEncodingEnabled by viewModel.homoglyphEncodingEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -439,6 +440,7 @@ fun MessageScreen(
                     nodes = nodes,
                     ourNode = ourNode,
                     messages = pagedMessages,
+                    timelineMessages = timelineMessages,
                     imageChunkMessages = imageChunkMessages,
                     selectedIds = selectedMessageIds,
                     contactKey = contactKey,
