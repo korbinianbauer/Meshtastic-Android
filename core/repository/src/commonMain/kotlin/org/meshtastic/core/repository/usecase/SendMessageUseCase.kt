@@ -56,9 +56,7 @@ class SendMessageUseCaseImpl(
     private val radioController: RadioController,
     private val homoglyphEncodingPrefs: HomoglyphPrefs,
     private val messageQueue: MessageQueue,
-) : SendMessageUseCase {
-    private val imageSendUseCaseLogger = Logger.withTag("MsgImageSendUseCase")
-
+) : SendMessageUseCase{
     /**
      * Executes the send message workflow.
      *
@@ -127,10 +125,6 @@ class SendMessageUseCaseImpl(
         val ourNode = nodeRepository.ourNodeInfo.value
         val fromId = ourNode?.user?.id ?: DataPacket.ID_LOCAL
 
-        imageSendUseCaseLogger.d {
-            "sendPrivateAppPayload start: contactKey=$contactKey channel=${channel ?: 0} dest=$dest bytes=${payload.size} fromId=$fromId"
-        }
-
         enqueuePacket(
             packet =
                 DataPacket(
@@ -151,11 +145,6 @@ class SendMessageUseCaseImpl(
         val packetId = Random.nextInt(1, Int.MAX_VALUE)
         packet.id = packetId
         try {
-            if (packet.dataType == PortNum.PRIVATE_APP.value) {
-                imageSendUseCaseLogger.d {
-                    "enqueuePacket private_app: packetId=$packetId contactKey=$contactKey myNodeNum=$myNodeNum bytes=${packet.bytes?.size ?: 0}"
-                }
-            }
             packetRepository.savePacket(
                 myNodeNum = myNodeNum,
                 contactKey = contactKey,
@@ -163,9 +152,6 @@ class SendMessageUseCaseImpl(
                 receivedTime = nowMillis,
             )
             messageQueue.enqueue(packetId)
-            if (packet.dataType == PortNum.PRIVATE_APP.value) {
-                imageSendUseCaseLogger.d { "enqueuePacket queued private_app: packetId=$packetId" }
-            }
         } catch (ex: Exception) {
             Logger.e(ex) { "Failed to enqueue message packet" }
         }
