@@ -21,7 +21,6 @@ package org.meshtastic.feature.messaging
 import android.content.ClipData
 import android.graphics.Bitmap
 import android.net.Uri
-import co.touchlab.kermit.Logger
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -128,7 +127,6 @@ import java.nio.charset.StandardCharsets
 
 private const val ROUNDED_CORNER_PERCENT = 100
 private const val MAX_LINES = 3
-private val imagePipelineLogger = Logger.withTag("MsgImagePipeline")
 
 /**
  * The main screen for displaying and sending messages to a contact or channel.
@@ -552,7 +550,6 @@ private fun MessageInput(
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedImageUri = uri
-        imagePipelineLogger.d { "imagePicker result: selected=${uri != null} uri=$uri" }
     }
 
     OutlinedTextField(
@@ -643,7 +640,6 @@ private fun MessageInput(
                 text = { Text(stringResource(Res.string.attach_image)) },
                 onClick = {
                     showAttachmentMenu = false
-                    imagePipelineLogger.d { "imagePicker launch requested" }
                     imagePickerLauncher.launch("image/*")
                 }
             )
@@ -668,9 +664,6 @@ private fun MessageInput(
                     it.coerceIn(MIN_IMAGE_DUTY_CYCLE_PERCENT, maxDutyCyclePercentForRegion(loraConfig.region))
             },
             onSend = { chunks, delayMillis ->
-                imagePipelineLogger.d {
-                    "imageSend confirmed: chunks=${chunks.size} delayMillis=$delayMillis totalChunkBytes=${chunks.sumOf { it.size }} contactKey=$contactKey"
-                }
                 selectedImageUri = null
                 if (viewModel != null) {
                     viewModel.sendChunkedPayloadChunks(
@@ -681,7 +674,6 @@ private fun MessageInput(
                 }
             },
             onCancel = {
-                imagePipelineLogger.d { "imageSend cancelled in adjustment dialog uri=$uri" }
                 selectedImageUri = null
             }
         )
