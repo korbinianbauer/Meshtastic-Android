@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.twotone.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -45,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.stringResource
 import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.error
+import org.meshtastic.core.ui.icon.Info
+import org.meshtastic.core.ui.icon.MeshtasticIcons
 
 @Composable
 fun SignedIntegerEditTextPreference(
@@ -205,6 +205,7 @@ fun EditTextPreference(
     onFocusChanged: (FocusState) -> Unit = {},
     trailingIcon: (@Composable () -> Unit)? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    multiline: Boolean = false,
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
@@ -212,12 +213,13 @@ fun EditTextPreference(
         OutlinedTextField(
             modifier = Modifier.fillMaxWidth().onFocusEvent { onFocusChanged(it) },
             value = value,
-            singleLine = true,
+            singleLine = !multiline,
+            maxLines = if (multiline) 5 else 1,
             enabled = enabled,
             isError = isError,
             onValueChange = {
                 if (maxSize > 0) {
-                    if (it.toByteArray().size <= maxSize) {
+                    if (it.encodeToByteArray().size <= maxSize) {
                         onValueChanged(it)
                     }
                 } else {
@@ -234,7 +236,7 @@ fun EditTextPreference(
             } else if (isError) {
                 {
                     Icon(
-                        imageVector = Icons.TwoTone.Info,
+                        imageVector = MeshtasticIcons.Info,
                         contentDescription = stringResource(Res.string.error),
                         tint = MaterialTheme.colorScheme.error,
                     )
@@ -255,7 +257,7 @@ fun EditTextPreference(
         if (maxSize > 0 && isFocused) {
             Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = "${value.toByteArray().size}/$maxSize",
+                    text = "${value.encodeToByteArray().size}/$maxSize",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.padding(end = 8.dp, bottom = 4.dp),

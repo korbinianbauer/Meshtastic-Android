@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,41 +18,46 @@ package org.meshtastic.feature.node.list
 
 import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
-import org.meshtastic.core.datastore.UiPreferencesDataSource
 import org.meshtastic.core.model.NodeSortOption
+import org.meshtastic.core.repository.UiPrefs
 
 @Single
-class NodeFilterPreferences constructor(private val uiPreferencesDataSource: UiPreferencesDataSource) {
-    val includeUnknown = uiPreferencesDataSource.includeUnknown
-    val excludeInfrastructure = uiPreferencesDataSource.excludeInfrastructure
-    val onlyOnline = uiPreferencesDataSource.onlyOnline
-    val onlyDirect = uiPreferencesDataSource.onlyDirect
-    val showIgnored = uiPreferencesDataSource.showIgnored
+open class NodeFilterPreferences constructor(private val uiPrefs: UiPrefs) {
+    open val includeUnknown = uiPrefs.includeUnknown
+    open val excludeInfrastructure = uiPrefs.excludeInfrastructure
+    open val onlyOnline = uiPrefs.onlyOnline
+    open val onlyDirect = uiPrefs.onlyDirect
+    open val showIgnored = uiPrefs.showIgnored
+    open val excludeMqtt = uiPrefs.excludeMqtt
 
-    val nodeSortOption =
-        uiPreferencesDataSource.nodeSort.map { NodeSortOption.entries.getOrElse(it) { NodeSortOption.VIA_FAVORITE } }
+    open val nodeSortOption =
+        uiPrefs.nodeSort.map { NodeSortOption.entries.getOrElse(it) { NodeSortOption.VIA_FAVORITE } }
 
-    fun setNodeSort(option: NodeSortOption) {
-        uiPreferencesDataSource.setNodeSort(option.ordinal)
+    open fun setNodeSort(option: NodeSortOption) {
+        uiPrefs.setNodeSort(option.ordinal)
     }
 
-    fun toggleIncludeUnknown() {
-        uiPreferencesDataSource.setIncludeUnknown(!includeUnknown.value)
+    open fun toggleIncludeUnknown() {
+        uiPrefs.setIncludeUnknown(!includeUnknown.value)
     }
 
-    fun toggleExcludeInfrastructure() {
-        uiPreferencesDataSource.setExcludeInfrastructure(!excludeInfrastructure.value)
+    open fun toggleExcludeInfrastructure() {
+        uiPrefs.setExcludeInfrastructure(!excludeInfrastructure.value)
     }
 
-    fun toggleOnlyOnline() {
-        uiPreferencesDataSource.setOnlyOnline(!onlyOnline.value)
+    open fun toggleOnlyOnline() {
+        uiPrefs.setOnlyOnline(!onlyOnline.value)
     }
 
-    fun toggleOnlyDirect() {
-        uiPreferencesDataSource.setOnlyDirect(!onlyDirect.value)
+    open fun toggleOnlyDirect() {
+        uiPrefs.setOnlyDirect(!onlyDirect.value)
     }
 
-    fun toggleShowIgnored() {
-        uiPreferencesDataSource.setShowIgnored(!showIgnored.value)
+    open fun toggleShowIgnored() {
+        uiPrefs.setShowIgnored(!showIgnored.value)
+    }
+
+    open fun toggleExcludeMqtt() {
+        uiPrefs.setExcludeMqtt(!excludeMqtt.value)
     }
 }

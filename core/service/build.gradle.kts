@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,35 +21,49 @@ plugins {
 }
 
 kotlin {
-    jvm()
-
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.core.service"
         androidResources.enable = false
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     sourceSets {
         commonMain.dependencies {
+            api(projects.core.repository)
             implementation(projects.core.common)
             implementation(projects.core.data)
             implementation(projects.core.database)
+            implementation(projects.core.di)
             implementation(projects.core.model)
+            implementation(projects.core.navigation)
+            implementation(projects.core.network)
+            implementation(projects.core.ble)
             implementation(projects.core.prefs)
             implementation(projects.core.proto)
+            implementation(projects.core.takserver)
 
+            implementation(libs.jetbrains.lifecycle.runtime)
+            implementation(libs.kotlinx.atomicfu)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kermit)
         }
 
-        androidMain.dependencies { api(projects.core.api) }
-
-        commonTest.dependencies {
-            implementation(kotlin("test"))
-            implementation(libs.junit)
-            implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.mockk)
-            implementation(libs.turbine)
+        androidMain.dependencies {
+            api(projects.core.api)
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.work.runtime.ktx)
+            implementation(libs.koin.android)
+            implementation(libs.koin.androidx.workmanager)
         }
+
+        val androidHostTest by getting {
+            dependencies {
+                implementation(projects.core.testing)
+                implementation(libs.androidx.test.ext.junit)
+                implementation(libs.androidx.work.testing)
+            }
+        }
+
+        commonTest.dependencies { implementation(libs.kotlinx.coroutines.test) }
     }
 }

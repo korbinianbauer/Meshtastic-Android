@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,12 +17,14 @@
 package org.meshtastic.core.database.dao
 
 import androidx.paging.PagingSource
-import androidx.room.Dao
-import androidx.room.MapColumn
-import androidx.room.Query
-import androidx.room.Transaction
-import androidx.room.Update
-import androidx.room.Upsert
+import androidx.room3.Dao
+import androidx.room3.Insert
+import androidx.room3.MapColumn
+import androidx.room3.OnConflictStrategy
+import androidx.room3.Query
+import androidx.room3.Transaction
+import androidx.room3.Update
+import androidx.room3.Upsert
 import kotlinx.coroutines.flow.Flow
 import okio.ByteString
 import org.meshtastic.core.common.util.nowMillis
@@ -76,6 +78,7 @@ interface PacketDao {
     ) latest ON p.contact_key = latest.contact_key AND p.received_time = latest.max_time
     WHERE (p.myNodeNum = 0 OR p.myNodeNum = (SELECT myNodeNum FROM my_node))
         AND (p.port_num = 1 OR p.port_num = 256) AND p.filtered = 0
+    GROUP BY p.contact_key
     ORDER BY p.received_time DESC
     """,
     )
@@ -317,6 +320,16 @@ interface PacketDao {
     )
     suspend fun getPacketByPacketId(packetId: Int): PacketEntity?
 
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM packet
+        WHERE packet_id IN (:packetIds)
+        AND (myNodeNum = 0 OR myNodeNum = (SELECT myNodeNum FROM my_node))
+        """,
+    )
+    suspend fun getPacketsByPacketIds(packetIds: List<Int>): List<PacketEntity>
+
     @Query(
         """
         SELECT * FROM packet 
@@ -336,8 +349,16 @@ interface PacketDao {
     )
     suspend fun findPacketBySfppHash(hash: ByteString): Packet?
 
-    @Transaction
-    suspend fun getQueuedPackets(): List<DataPacket>? = getDataPackets().filter { it.status == MessageStatus.QUEUED }
+    // Fetches all DataPackets for the current node, ordered by time.
+    // Callers should filter by status in Kotlin (avoids SQLite json_extract dependency).
+    @Query(
+        """
+    SELECT data FROM packet
+    WHERE (myNodeNum = 0 OR myNodeNum = (SELECT myNodeNum FROM my_node))
+    ORDER BY received_time ASC
+    """,
+    )
+    suspend fun getAllDataPackets(): List<DataPacket>
 
     @Query(
         """
@@ -369,24 +390,24 @@ interface PacketDao {
 
     @Upsert suspend fun upsertContactSettings(contacts: List<ContactSettings>)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertContactSettingsIgnore(contacts: List<ContactSettings>)
+
+    @Query("UPDATE contact_settings SET muteUntil = :muteUntil WHERE contact_key IN (:contactKeys)")
+    suspend fun updateMuteUntil(contactKeys: List<String>, muteUntil: Long)
+
     @Transaction
     suspend fun setMuteUntil(contacts: List<String>, until: Long) {
-        val contactList =
-            contacts.map { contact ->
-                // Always mute
-                val absoluteMuteUntil =
-                    if (until == Long.MAX_VALUE) {
-                        Long.MAX_VALUE
-                    } else if (until == 0L) { // unmute
-                        0L
-                    } else {
-                        nowMillis + until
-                    }
-
-                getContactSettings(contact)?.copy(muteUntil = absoluteMuteUntil)
-                    ?: ContactSettings(contact_key = contact, muteUntil = absoluteMuteUntil)
+        val absoluteMuteUntil =
+            when {
+                until == Long.MAX_VALUE -> Long.MAX_VALUE
+                until == 0L -> 0L
+                else -> nowMillis + until
             }
-        upsertContactSettings(contactList)
+        // Ensure rows exist for all contacts (IGNORE avoids overwriting existing data)
+        insertContactSettingsIgnore(contacts.map { ContactSettings(contact_key = it) })
+        // Atomic column-level update — no read-then-write race
+        updateMuteUntil(contacts, absoluteMuteUntil)
     }
 
     @Upsert suspend fun insert(reaction: ReactionEntity)
@@ -498,7 +519,9 @@ interface PacketDao {
                     val newIndex =
                         when {
                             pskMatches.isEmpty() -> null
+
                             pskMatches.size == 1 -> pskMatches.first().first
+
                             else -> {
                                 // Multiple matches with same PSK. Disambiguate by Name.
                                 val nameMatches = pskMatches.filter { it.second.name == oldChannel.name }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,19 +16,16 @@
  */
 package org.meshtastic.core.database.dao
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room3.Dao
+import androidx.room3.Query
+import androidx.room3.Upsert
 import org.meshtastic.core.database.entity.DeviceHardwareEntity
 
 @Dao
 interface DeviceHardwareDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(deviceHardware: DeviceHardwareEntity)
+    @Upsert suspend fun insert(deviceHardware: DeviceHardwareEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(deviceHardware: List<DeviceHardwareEntity>)
+    @Upsert suspend fun insertAll(deviceHardware: List<DeviceHardwareEntity>)
 
     @Query("SELECT * FROM device_hardware WHERE hwModel = :hwModel")
     suspend fun getByHwModel(hwModel: Int): List<DeviceHardwareEntity>

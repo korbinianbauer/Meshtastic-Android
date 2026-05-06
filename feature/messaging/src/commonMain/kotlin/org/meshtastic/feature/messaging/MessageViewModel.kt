@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,9 +34,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
-import org.meshtastic.core.data.repository.QuickChatActionRepository
+import org.meshtastic.core.common.util.ioDispatcher
 import org.meshtastic.core.model.ContactSettings
 import org.meshtastic.core.model.DataPacket
 import org.meshtastic.core.model.Message
@@ -44,13 +43,15 @@ import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.service.ServiceAction
 import org.meshtastic.core.repository.CustomEmojiPrefs
 import org.meshtastic.core.repository.HomoglyphPrefs
-import org.meshtastic.core.repository.MeshServiceNotifications
 import org.meshtastic.core.repository.NodeRepository
+import org.meshtastic.core.repository.NotificationManager
 import org.meshtastic.core.repository.PacketRepository
+import org.meshtastic.core.repository.QuickChatActionRepository
 import org.meshtastic.core.repository.RadioConfigRepository
 import org.meshtastic.core.repository.ServiceRepository
 import org.meshtastic.core.repository.UiPrefs
 import org.meshtastic.core.repository.usecase.SendMessageUseCase
+import org.meshtastic.core.ui.viewmodel.safeLaunch
 import org.meshtastic.core.ui.viewmodel.stateInWhileSubscribed
 import org.meshtastic.proto.ChannelSet
 
@@ -66,7 +67,7 @@ class MessageViewModel(
     private val uiPrefs: UiPrefs,
     private val customEmojiPrefs: CustomEmojiPrefs,
     private val homoglyphEncodingPrefs: HomoglyphPrefs,
-    private val meshServiceNotifications: MeshServiceNotifications,
+    private val notificationManager: NotificationManager,
     private val sendMessageUseCase: SendMessageUseCase,
 ) : ViewModel() {
     private val _title = MutableStateFlow("")
@@ -80,8 +81,7 @@ class MessageViewModel(
 
     val channels = radioConfigRepository.channelSetFlow.stateInWhileSubscribed(ChannelSet())
 
-    private val _showQuickChat = MutableStateFlow(uiPrefs.showQuickChat.value)
-    val showQuickChat: StateFlow<Boolean> = _showQuickChat
+    val showQuickChat = uiPrefs.showQuickChat
 
     private val _showFiltered = MutableStateFlow(false)
     val showFiltered: StateFlow<Boolean> = _showFiltered.asStateFlow()
@@ -171,7 +171,7 @@ class MessageViewModel(
     }
 
     fun setTitle(title: String) {
-        viewModelScope.launch { _title.value = title }
+        _title.value = title
     }
 
     fun getMessagesFromPaged(contactKey: String): Flow<PagingData<Message>> {
@@ -195,20 +195,17 @@ class MessageViewModel(
         return flow { emitAll(packetRepository.getMessagesFrom(contactKey, limit = limit, getNode = ::getNode)) }
     }
 
-    fun toggleShowQuickChat() = toggle(_showQuickChat) { uiPrefs.setShowQuickChat(it) }
+    fun toggleShowQuickChat() {
+        uiPrefs.setShowQuickChat(!uiPrefs.showQuickChat.value)
+    }
 
     fun toggleShowFiltered() {
         _showFiltered.update { !it }
     }
 
     fun setContactFilteringDisabled(contactKey: String, disabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) { packetRepository.setContactFilteringDisabled(contactKey, disabled) }
-    }
-
-    private fun toggle(state: MutableStateFlow<Boolean>, onChanged: (newValue: Boolean) -> Unit) {
-        (!state.value).let { toggled ->
-            state.update { toggled }
-            onChanged(toggled)
+        safeLaunch(context = ioDispatcher, tag = "setContactFilteringDisabled") {
+            packetRepository.setContactFilteringDisabled(contactKey, disabled)
         }
     }
 
@@ -230,7 +227,7 @@ class MessageViewModel(
      * @param replyId The ID of the message this is a reply to, if any.
      */
     fun sendMessage(str: String, contactKey: String = "0${DataPacket.ID_BROADCAST}", replyId: Int? = null) {
-        viewModelScope.launch { sendMessageUseCase.invoke(str, contactKey, replyId) }
+        safeLaunch(tag = "sendMessage") { sendMessageUseCase.invoke(str, contactKey, replyId) }
     }
 
     fun sendChunkedPayloadChunks(
@@ -265,21 +262,22 @@ class MessageViewModel(
         _isSendingChunks.value = false
     }
 
-    fun sendReaction(emoji: String, replyId: Int, contactKey: String) =
-        viewModelScope.launch { serviceRepository.onServiceAction(ServiceAction.Reaction(emoji, replyId, contactKey)) }
+    fun sendReaction(emoji: String, replyId: Int, contactKey: String) = safeLaunch(tag = "sendReaction") {
+        serviceRepository.onServiceAction(ServiceAction.Reaction(emoji, replyId, contactKey))
+    }
 
     fun deleteMessages(uuidList: List<Long>) =
-        viewModelScope.launch(Dispatchers.IO) { packetRepository.deleteMessages(uuidList) }
+        safeLaunch(context = ioDispatcher, tag = "deleteMessages") { packetRepository.deleteMessages(uuidList) }
 
     fun clearUnreadCount(contact: String, messageUuid: Long, lastReadTimestamp: Long) =
-        viewModelScope.launch(Dispatchers.IO) {
+        safeLaunch(context = ioDispatcher, tag = "clearUnreadCount") {
             val existingTimestamp = contactSettings.value[contact]?.lastReadMessageTimestamp ?: Long.MIN_VALUE
             if (lastReadTimestamp <= existingTimestamp) {
-                return@launch
+                return@safeLaunch
             }
             packetRepository.clearUnreadCount(contact, lastReadTimestamp)
             packetRepository.updateLastReadMessage(contact, messageUuid, lastReadTimestamp)
             val unreadCount = packetRepository.getUnreadCount(contact)
-            if (unreadCount == 0) meshServiceNotifications.cancelMessageNotification(contact)
+            if (unreadCount == 0) notificationManager.cancel(contact.hashCode())
         }
 }

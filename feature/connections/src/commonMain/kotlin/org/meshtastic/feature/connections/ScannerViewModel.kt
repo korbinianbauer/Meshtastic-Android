@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,76 +19,231 @@ package org.meshtastic.feature.connections
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import org.koin.core.annotation.KoinViewModel
+import org.meshtastic.core.ble.BleDevice
+import org.meshtastic.core.ble.BleScanner
+import org.meshtastic.core.ble.MeshtasticBleConstants
 import org.meshtastic.core.datastore.RecentAddressesDataSource
 import org.meshtastic.core.datastore.model.RecentAddress
+import org.meshtastic.core.di.CoroutineDispatchers
 import org.meshtastic.core.model.RadioController
 import org.meshtastic.core.model.util.anonymize
+import org.meshtastic.core.network.repository.NetworkRepository
 import org.meshtastic.core.repository.RadioInterfaceService
+import org.meshtastic.core.repository.RadioPrefs
 import org.meshtastic.core.repository.ServiceRepository
+import org.meshtastic.core.repository.UiPrefs
+import org.meshtastic.core.ui.viewmodel.safeLaunch
 import org.meshtastic.core.ui.viewmodel.stateInWhileSubscribed
 import org.meshtastic.feature.connections.model.DeviceListEntry
+import org.meshtastic.feature.connections.model.DiscoveredDevices
 import org.meshtastic.feature.connections.model.GetDiscoveredDevicesUseCase
+import kotlin.time.Duration
 
-@KoinViewModel
+/**
+ * Platform-neutral ViewModel that drives the Connections screen: device discovery (BLE/USB/TCP), scan state, current
+ * selection, and connection-progress chatter.
+ *
+ * Subclassed per-platform (see `AndroidScannerViewModel`, `JvmScannerViewModel`) to plug in platform-specific bonding /
+ * permission flows.
+ */
 @Suppress("LongParameterList", "TooManyFunctions")
 open class ScannerViewModel(
     protected val serviceRepository: ServiceRepository,
     private val radioController: RadioController,
     private val radioInterfaceService: RadioInterfaceService,
+    private val radioPrefs: RadioPrefs,
     private val recentAddressesDataSource: RecentAddressesDataSource,
     private val getDiscoveredDevicesUseCase: GetDiscoveredDevicesUseCase,
-    private val bleScanner: org.meshtastic.core.ble.BleScanner? = null,
+    private val networkRepository: NetworkRepository,
+    private val dispatchers: CoroutineDispatchers,
+    private val uiPrefs: UiPrefs,
+    private val bleScanner: BleScanner? = null,
 ) : ViewModel() {
-    val showMockInterface: StateFlow<Boolean> = MutableStateFlow(radioInterfaceService.isMockInterface()).asStateFlow()
 
-    private val _errorText = MutableStateFlow<String?>(null)
-    val errorText: StateFlow<String?> = _errorText.asStateFlow()
+    // ── Mock / demo transport ─────────────────────────────────────────────────────────────────
+    private val _showMockTransport = MutableStateFlow(false)
+    val showMockTransport: StateFlow<Boolean> = _showMockTransport.asStateFlow()
 
-    private val isBleScanningState = MutableStateFlow(false)
-    val isBleScanning: StateFlow<Boolean> = isBleScanningState.asStateFlow()
+    // ── Connection-progress chatter (surfaced as the bottom status pill) ──────────────────────
+    private val _connectionProgressText = MutableStateFlow<String?>(null)
 
-    private val scannedBleDevices = MutableStateFlow<Map<String, org.meshtastic.core.ble.BleDevice>>(emptyMap())
+    /**
+     * Transient, fine-grained status text emitted during connect/bonding (e.g. "Bonding…", "Requesting config…").
+     * Nullable because `serviceRepository.connectionProgress` does not emit during steady-state.
+     *
+     * Persistent "Not connected / Connecting / Connected" copy is derived separately in
+     * `ConnectionsViewModel.connectionStatus` so the UI can choose `progress ?: status`.
+     */
+    val connectionProgressText: StateFlow<String?> = _connectionProgressText.asStateFlow()
 
-    private var scanJob: kotlinx.coroutines.Job? = null
+    // ── BLE scanning ──────────────────────────────────────────────────────────────────────────
+    private val _isBleScanning = MutableStateFlow(false)
+    val isBleScanning: StateFlow<Boolean> = _isBleScanning.asStateFlow()
+
+    /** User preference that controls whether BLE scanning auto-starts when the Connections screen opens. */
+    val bleAutoScan: StateFlow<Boolean> = uiPrefs.bleAutoScan
+
+    private val scannedBleDevices = MutableStateFlow<Map<String, BleDevice>>(emptyMap())
+    private val discoveryOrder = MutableStateFlow<List<String>>(emptyList())
+    private var scanJob: Job? = null
+
+    // ── Network scanning (NSD gating) ─────────────────────────────────────────────────────────
+    private val _isNetworkScanning = MutableStateFlow(false)
+    val isNetworkScanning: StateFlow<Boolean> = _isNetworkScanning.asStateFlow()
+
+    /** User preference that controls whether NSD network scanning auto-starts when the Connections screen opens. */
+    val networkAutoScan: StateFlow<Boolean> = uiPrefs.networkAutoScan
+
+    // ── Transport-section visibility (filter chips) ───────────────────────────────────────────
+
+    /** Whether the BLE section is visible in the Connections device list. Defaults to `true`. */
+    val showBleTransport: StateFlow<Boolean> = uiPrefs.showBleTransport
+
+    /** Whether the Network (TCP/NSD) section is visible in the Connections device list. Defaults to `true`. */
+    val showNetworkTransport: StateFlow<Boolean> = uiPrefs.showNetworkTransport
+
+    /** Whether the USB section is visible in the Connections device list. Defaults to `true`. */
+    val showUsbTransport: StateFlow<Boolean> = uiPrefs.showUsbTransport
+
+    fun setShowBleTransport(enabled: Boolean) = uiPrefs.setShowBleTransport(enabled)
+
+    fun setShowNetworkTransport(enabled: Boolean) = uiPrefs.setShowNetworkTransport(enabled)
+
+    fun setShowUsbTransport(enabled: Boolean) = uiPrefs.setShowUsbTransport(enabled)
+
+    /**
+     * Resolved NSD services flow, gated by [_isNetworkScanning]. When scanning is inactive, emits `emptyList()` so
+     * `NsdManager.discoverServices()` is never triggered. Android 15+ shows a system consent dialog the first time
+     * `resolvedList` is subscribed, so the gate ensures NSD only runs when the user explicitly requests it.
+     */
+    private val gatedResolvedList =
+        _isNetworkScanning.flatMapLatest { scanning ->
+            if (scanning) networkRepository.resolvedList else flowOf(emptyList())
+        }
+
+    private val discoveredDevicesFlow: StateFlow<DiscoveredDevices> =
+        showMockTransport
+            .flatMapLatest { showMock -> getDiscoveredDevicesUseCase.invoke(showMock, gatedResolvedList) }
+            .stateInWhileSubscribed(initialValue = DiscoveredDevices())
+
+    init {
+        _showMockTransport.value = radioInterfaceService.isMockTransport()
+        serviceRepository.connectionProgress.onEach { _connectionProgressText.value = it }.launchIn(viewModelScope)
+        Logger.d { "ScannerViewModel created" }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopBleScan()
+        stopNetworkScan()
+        Logger.d { "ScannerViewModel cleared" }
+    }
+
+    // ── Device lists for UI ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Combined bonded + scanned BLE devices for the UI.
+     *
+     * Sorted for stability to prevent "shifting" as advertisements arrive: bonded devices always appear first (sorted
+     * by name), followed by unbonded scanned devices in the order they were first discovered. RSSI updates are
+     * reflected on the cards but do not trigger a re-sort.
+     */
+    val bleDevicesForUi: StateFlow<List<DeviceListEntry>> =
+        combine(discoveredDevicesFlow, scannedBleDevices, discoveryOrder) { discovered, scannedMap, order ->
+            val bonded = discovered.bleDevices.filterIsInstance<DeviceListEntry.Ble>()
+            val bondedAddresses = bonded.mapTo(mutableSetOf()) { it.address }
+
+            // Scanned-but-not-bonded devices are explicitly flagged unbonded so the UI routes through
+            // requestBonding() — which on Android triggers createBond() for the pairing dialog before connecting.
+            // Preserves discovery order to prevent items jumping around during the scan burst.
+            val unbondedScanned =
+                order
+                    .filter { it !in bondedAddresses }
+                    .mapNotNull { address ->
+                        scannedMap[address]?.let { DeviceListEntry.Ble(device = it, bonded = false) }
+                    }
+
+            // For bonded devices, attach the latest scan RSSI (if we've seen an advertisement this session) so the
+            // UI can show the signal indicator, but keep them sorted by name for stability.
+            val bondedForUi =
+                bonded
+                    .map { entry ->
+                        val scanned = scannedMap[entry.address]
+                        if (scanned != null && scanned.rssi != null) entry.copy(device = scanned) else entry
+                    }
+                    .sortedBy { it.name }
+
+            bondedForUi + unbondedScanned
+        }
+            .flowOn(dispatchers.default)
+            .distinctUntilChanged()
+            .stateInWhileSubscribed(initialValue = emptyList())
+
+    val usbDevicesForUi: StateFlow<List<DeviceListEntry>> =
+        discoveredDevicesFlow.map { it.usbDevices }.distinctUntilChanged().stateInWhileSubscribed(emptyList())
+
+    val discoveredTcpDevicesForUi: StateFlow<List<DeviceListEntry>> =
+        discoveredDevicesFlow.map { it.discoveredTcpDevices }.distinctUntilChanged().stateInWhileSubscribed(emptyList())
+
+    val recentTcpDevicesForUi: StateFlow<List<DeviceListEntry>> =
+        discoveredDevicesFlow.map { it.recentTcpDevices }.distinctUntilChanged().stateInWhileSubscribed(emptyList())
+
+    // ── Current selection ────────────────────────────────────────────────────────────────────
+
+    val selectedAddressFlow: StateFlow<String?> = radioInterfaceService.currentDeviceAddressFlow
+
+    /** The persisted device name from the last selection, for use as a UI fallback. */
+    val persistedDeviceName: StateFlow<String?> = radioPrefs.devName
+
+    /** Non-null variant of [selectedAddressFlow] that substitutes [NO_DEVICE_SELECTED] for `null`. */
+    val selectedNotNullFlow: StateFlow<String> =
+        selectedAddressFlow
+            .map { it ?: NO_DEVICE_SELECTED }
+            .stateInWhileSubscribed(initialValue = selectedAddressFlow.value ?: NO_DEVICE_SELECTED)
+
+    // ── Scan commands ────────────────────────────────────────────────────────────────────────
 
     fun startBleScan() {
-        if (isBleScanningState.value || bleScanner == null) return
+        if (_isBleScanning.value || bleScanner == null) return
 
-        isBleScanningState.value = true
-        scannedBleDevices.value = emptyMap()
+        _isBleScanning.value = true
 
         scanJob =
-            viewModelScope.launch {
+            safeLaunch(tag = "startBleScan") {
                 try {
                     bleScanner
-                        .scan(
-                            timeout = kotlin.time.Duration.INFINITE,
-                            serviceUuid = org.meshtastic.core.ble.MeshtasticBleConstants.SERVICE_UUID,
-                        )
-                        .flowOn(kotlinx.coroutines.Dispatchers.IO)
+                        .scan(timeout = Duration.INFINITE, serviceUuid = MeshtasticBleConstants.SERVICE_UUID)
+                        .flowOn(dispatchers.io)
                         .collect { device ->
-                            if (!scannedBleDevices.value.containsKey(device.address)) {
-                                scannedBleDevices.update { current -> current + (device.address to device) }
+                            scannedBleDevices.update { current ->
+                                val existing = current[device.address]
+                                // Replace if RSSI changed so the UI reflects the latest advertisement. Keep the same
+                                // instance otherwise to avoid unnecessary recomposition.
+                                if (existing != null && existing.rssi == device.rssi) {
+                                    current
+                                } else {
+                                    current + (device.address to device)
+                                }
+                            }
+                            if (device.address !in discoveryOrder.value) {
+                                discoveryOrder.update { it + device.address }
                             }
                         }
-                } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                    co.touchlab.kermit.Logger.w(e) { "BLE scan failed" }
                 } finally {
-                    isBleScanningState.value = false
+                    _isBleScanning.value = false
                 }
             }
     }
@@ -96,75 +251,39 @@ open class ScannerViewModel(
     fun stopBleScan() {
         scanJob?.cancel()
         scanJob = null
-        isBleScanningState.value = false
+        _isBleScanning.value = false
     }
 
-    private val discoveredDevicesFlow =
-        showMockInterface
-            .flatMapLatest { showMock -> getDiscoveredDevicesUseCase.invoke(showMock) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-    /** A combined list of bonded and scanned BLE devices for the UI. */
-    val bleDevicesForUi: StateFlow<List<DeviceListEntry>> =
-        kotlinx.coroutines.flow
-            .combine(discoveredDevicesFlow, scannedBleDevices) { discovered, scannedMap ->
-                val bonded = discovered?.bleDevices?.filterIsInstance<DeviceListEntry.Ble>() ?: emptyList()
-                val bondedAddresses = bonded.map { it.address }.toSet()
-
-                // Add scanned devices that aren't already in the bonded list
-                val unbondedScanned =
-                    scannedMap.values.filter { it.address !in bondedAddresses }.map { DeviceListEntry.Ble(it) }
-
-                // Sort by name
-                (bonded + unbondedScanned).sortedBy { it.name }
-            }
-            .flowOn(kotlinx.coroutines.Dispatchers.Default)
-            .distinctUntilChanged()
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    /** UI StateFlow for USB devices. */
-    val usbDevicesForUi: StateFlow<List<DeviceListEntry>> =
-        discoveredDevicesFlow
-            .map { it?.usbDevices ?: emptyList() }
-            .distinctUntilChanged()
-            .stateInWhileSubscribed(initialValue = emptyList())
-
-    /** UI StateFlow for discovered TCP devices (NSD). */
-    val discoveredTcpDevicesForUi: StateFlow<List<DeviceListEntry>> =
-        discoveredDevicesFlow
-            .map { it?.discoveredTcpDevices ?: emptyList() }
-            .distinctUntilChanged()
-            .stateInWhileSubscribed(initialValue = emptyList())
-
-    /** UI StateFlow for recent TCP devices. */
-    val recentTcpDevicesForUi: StateFlow<List<DeviceListEntry>> =
-        discoveredDevicesFlow
-            .map { it?.recentTcpDevices ?: emptyList() }
-            .distinctUntilChanged()
-            .stateInWhileSubscribed(initialValue = emptyList())
-
-    val selectedAddressFlow: StateFlow<String?> = radioInterfaceService.currentDeviceAddressFlow
-
-    val selectedNotNullFlow: StateFlow<String> =
-        selectedAddressFlow
-            .map { it ?: NO_DEVICE_SELECTED }
-            .stateInWhileSubscribed(initialValue = selectedAddressFlow.value ?: NO_DEVICE_SELECTED)
-
-    val supportedDeviceTypes: List<org.meshtastic.core.model.DeviceType> = radioInterfaceService.supportedDeviceTypes
-
-    init {
-        serviceRepository.connectionProgress.onEach { _errorText.value = it }.launchIn(viewModelScope)
-        Logger.d { "ScannerViewModel created" }
+    /** Convenience command: start scanning if idle, stop otherwise. Persists the resulting state to prefs. */
+    fun toggleBleScan() {
+        if (_isBleScanning.value) stopBleScan() else startBleScan()
+        uiPrefs.setBleAutoScan(_isBleScanning.value)
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        Logger.d { "ScannerViewModel cleared" }
+    fun startNetworkScan() {
+        _isNetworkScanning.value = true
     }
 
-    fun setErrorText(text: String) {
-        _errorText.value = text
+    fun stopNetworkScan() {
+        _isNetworkScanning.value = false
     }
+
+    /** Convenience command: start scanning if idle, stop otherwise. Persists the resulting state to prefs. */
+    fun toggleNetworkScan() {
+        if (_isNetworkScanning.value) stopNetworkScan() else startNetworkScan()
+        uiPrefs.setNetworkAutoScan(_isNetworkScanning.value)
+    }
+
+    /**
+     * Persist the user's intent to auto-scan the network on next screen entry without flipping the active scan flag.
+     * Used by the Connections screen when it must defer the actual scan start until after the system permission grant
+     * dialog resolves — the persisted intent ensures auto-start fires once permission is granted.
+     */
+    fun persistNetworkAutoScanIntent(enabled: Boolean) {
+        uiPrefs.setNetworkAutoScan(enabled)
+    }
+
+    // ── Device selection / disconnect ───────────────────────────────────────────────────────
 
     fun changeDeviceAddress(address: String) {
         Logger.i { "Attempting to change device address to ${address.anonymize()}" }
@@ -172,59 +291,71 @@ open class ScannerViewModel(
     }
 
     fun addRecentAddress(address: String, name: String) {
-        if (!address.startsWith("t")) return
-        viewModelScope.launch { recentAddressesDataSource.add(RecentAddress(address, name)) }
+        if (!address.startsWith(TCP_DEVICE_PREFIX)) return
+        safeLaunch(tag = "addRecentAddress") { recentAddressesDataSource.add(RecentAddress(address, name)) }
     }
 
     fun removeRecentAddress(address: String) {
-        viewModelScope.launch { recentAddressesDataSource.remove(address) }
+        safeLaunch(tag = "removeRecentAddress") { recentAddressesDataSource.remove(address) }
     }
 
     /**
-     * Called by the GUI when a new device has been selected by the user.
+     * Called by the UI when a device has been tapped. BLE and USB entries may still need bonding/permission — the
+     * concrete return value tells the caller whether the connection was initiated immediately.
      *
-     * @return true if the connection was initiated immediately.
+     * @return `true` if the connection has been initiated; `false` if bonding/permission is pending.
      */
-    fun onSelected(it: DeviceListEntry): Boolean = when (it) {
-        is DeviceListEntry.Ble -> {
-            if (it.bonded) {
-                changeDeviceAddress(it.fullAddress)
+    fun onSelected(entry: DeviceListEntry): Boolean {
+        radioPrefs.setDevName(entry.name)
+        addRecentAddress(entry.fullAddress, entry.name)
+        return when (entry) {
+            is DeviceListEntry.Ble -> {
+                if (entry.bonded) {
+                    changeDeviceAddress(entry.fullAddress)
+                    true
+                } else {
+                    requestBonding(entry)
+                    false
+                }
+            }
+
+            is DeviceListEntry.Usb -> {
+                if (entry.bonded) {
+                    changeDeviceAddress(entry.fullAddress)
+                    true
+                } else {
+                    requestPermission(entry)
+                    false
+                }
+            }
+
+            is DeviceListEntry.Tcp -> {
+                safeLaunch(tag = "onSelectedTcp") { changeDeviceAddress(entry.fullAddress) }
                 true
-            } else {
-                requestBonding(it)
-                false
             }
-        }
-        is DeviceListEntry.Usb -> {
-            if (it.bonded) {
-                changeDeviceAddress(it.fullAddress)
+
+            is DeviceListEntry.Mock -> {
+                changeDeviceAddress(entry.fullAddress)
                 true
-            } else {
-                requestPermission(it)
-                false
             }
-        }
-        is DeviceListEntry.Tcp -> {
-            viewModelScope.launch {
-                addRecentAddress(it.fullAddress, it.name)
-                changeDeviceAddress(it.fullAddress)
-            }
-            true
-        }
-        is DeviceListEntry.Mock -> {
-            changeDeviceAddress(it.fullAddress)
-            true
         }
     }
 
-    /** Initiates the bonding process and connects to the device upon success. */
-    protected open fun requestBonding(entry: DeviceListEntry.Ble) {}
+    /**
+     * Initiates the bonding process and connects to the device upon success.
+     *
+     * The default implementation connects directly without explicit bonding, which is correct for Desktop/JVM where the
+     * OS Bluetooth stack handles pairing during the GATT connection. Android overrides this to call `createBond()`
+     * first.
+     */
+    protected open fun requestBonding(entry: DeviceListEntry.Ble) {
+        changeDeviceAddress(entry.fullAddress)
+    }
 
-    protected open fun requestPermission(entry: DeviceListEntry.Usb) {}
+    protected open fun requestPermission(entry: DeviceListEntry.Usb) = Unit
 
     fun disconnect() {
+        radioPrefs.setDevName(null)
         changeDeviceAddress(NO_DEVICE_SELECTED)
     }
 }
-
-const val NO_DEVICE_SELECTED = "n"

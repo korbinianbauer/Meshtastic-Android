@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  */
 package org.meshtastic.feature.messaging.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -42,7 +43,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,8 +55,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +71,7 @@ import org.meshtastic.core.model.MessageStatus
 import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.Reaction
 import org.meshtastic.core.resources.Res
+import org.meshtastic.core.resources.a11y_message_from
 import org.meshtastic.core.resources.filter_message_label
 import org.meshtastic.core.resources.reply
 import org.meshtastic.core.ui.component.AutoLinkText
@@ -76,7 +80,8 @@ import org.meshtastic.core.ui.component.Rssi
 import org.meshtastic.core.ui.component.Snr
 import org.meshtastic.core.ui.component.TransportIcon
 import org.meshtastic.core.ui.emoji.EmojiPickerDialog
-import org.meshtastic.core.ui.icon.Hops
+import org.meshtastic.core.ui.icon.FormatQuote
+import org.meshtastic.core.ui.icon.HopCount
 import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.core.ui.theme.MessageItemColors
 import org.meshtastic.core.ui.util.createClipEntry
@@ -185,6 +190,7 @@ fun MessageItem(
 
     val containsBel = message.text.contains('\u0007')
 
+    val nodeColor = Color(if (message.fromLocal) ourNode.colors.second else node.colors.second)
     val alpha =
         if (message.filtered) {
             FILTERED_ALPHA
@@ -193,15 +199,10 @@ fun MessageItem(
         } else {
             NORMAL_ALPHA
         }
-    val containerColor =
-        if (message.fromLocal) {
-            Color(ourNode.colors.second).copy(alpha = alpha)
-        } else {
-            Color(node.colors.second).copy(alpha = alpha)
-        }
-    val cardColors =
-        CardDefaults.cardColors()
-            .copy(containerColor = containerColor, contentColor = contentColorFor(containerColor))
+
+    val containerColor = nodeColor.copy(alpha = alpha)
+    val contentColor = MaterialTheme.colorScheme.onSurface
+    val metadataStyle = MaterialTheme.typography.labelSmall
     val messageShape =
         getMessageBubbleShape(
             cornerRadius = 8.dp,
@@ -218,6 +219,8 @@ fun MessageItem(
                     Modifier
                 },
             )
+    val senderName = if (message.fromLocal) ourNode.user.long_name else node.user.long_name
+    val messageA11yText = stringResource(Res.string.a11y_message_from, senderName, message.text)
     if (showUserName && !message.fromLocal) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp),
@@ -254,19 +257,19 @@ fun MessageItem(
             )
             .then(messageModifier)
             .semantics(mergeDescendants = true) {
-                val senderName = if (message.fromLocal) ourNode.user.long_name else node.user.long_name
-                contentDescription = "Message from $senderName: ${message.text}"
+                contentDescription = messageA11yText
+                role = Role.Button
             },
         color = containerColor,
-        contentColor = contentColorFor(containerColor),
+        contentColor = contentColor,
         shape = messageShape,
+        border = BorderStroke(0.5.dp, nodeColor),
     ) {
         Column(modifier = Modifier.width(IntrinsicSize.Max)) {
             OriginalMessageSnippet(
                 modifier = Modifier.fillMaxWidth(),
                 message = message,
                 ourNode = ourNode,
-                hasSamePrev = hasSamePrev,
                 onNavigateToOriginalMessage = onNavigateToOriginalMessage,
             )
 
@@ -274,8 +277,8 @@ fun MessageItem(
                 if (inlineImageBitmap == null && !isPrivateImageChunk) {
                     AutoLinkText(
                         text = message.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = cardColors.contentColor,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = contentColor
                     )
                 }
 
@@ -329,10 +332,10 @@ fun MessageItem(
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 Icon(
-                                    imageVector = MeshtasticIcons.Hops,
+                                    imageVector = MeshtasticIcons.HopCount,
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp),
-                                    tint = cardColors.contentColor.copy(alpha = 0.7f),
+                                    tint = Color.White,
                                 )
                                 Text(
                                     text =
@@ -341,7 +344,8 @@ fun MessageItem(
                                     } else {
                                         "?"
                                     },
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = metadataStyle,
+                                    color = Color.White,
                                 )
                             }
                         }
@@ -357,7 +361,7 @@ fun MessageItem(
                     if (message.filtered) {
                         Text(
                             text = stringResource(Res.string.filter_message_label),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = metadataStyle,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 8.dp, end = 4.dp),
                         )
@@ -369,11 +373,7 @@ fun MessageItem(
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        modifier = Modifier.padding(start = 16.dp),
-                        text = message.time,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    Text(modifier = Modifier.padding(start = 16.dp), text = message.time, style = metadataStyle)
                 }
             }
         }
@@ -407,30 +407,22 @@ private enum class ActiveSheet {
 private fun OriginalMessageSnippet(
     message: Message,
     ourNode: Node,
-    hasSamePrev: Boolean,
     onNavigateToOriginalMessage: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val originalMessage = message.originalMessage
     if (originalMessage != null && originalMessage.packetId != 0) {
         val originalMessageNode = if (originalMessage.fromLocal) ourNode else originalMessage.node
-        val cardColors =
-            CardDefaults.cardColors()
-                .copy(
-                    containerColor = Color(originalMessageNode.colors.second).copy(alpha = 0.8f),
-                    contentColor = Color(originalMessageNode.colors.first),
-                )
+        val replyContainerColor = Color(originalMessageNode.colors.second).copy(alpha = 0.8f)
+        val replyContentColor = MaterialTheme.colorScheme.onSurface
+        // Rectangle shape — the outer message bubble's Surface clips to its
+        // rounded corners, so the reply header inherits the correct top radii
+        // automatically and stays square on the bottom where body text follows.
         Surface(
             modifier = modifier.fillMaxWidth().clickable { onNavigateToOriginalMessage(originalMessage.packetId) },
-            contentColor = cardColors.contentColor,
-            color = cardColors.containerColor,
-            shape =
-            getMessageBubbleShape(
-                cornerRadius = 16.dp,
-                isSender = originalMessage.fromLocal,
-                hasSamePrev = hasSamePrev,
-                hasSameNext = true, // always square off original message bottom
-            ),
+            contentColor = replyContentColor,
+            color = replyContainerColor,
+            shape = RectangleShape,
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -438,7 +430,7 @@ private fun OriginalMessageSnippet(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Icon(
-                    Icons.Rounded.FormatQuote,
+                    MeshtasticIcons.FormatQuote,
                     contentDescription = stringResource(Res.string.reply),
                     modifier = Modifier.size(16.dp),
                 )

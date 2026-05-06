@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,23 +28,22 @@ import androidx.work.WorkManager
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-import no.nordicsemi.kotlin.ble.core.android.AndroidEnvironment
 import org.koin.android.ext.android.get
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.koin.workManagerFactory
-import org.koin.core.context.startKoin
-import org.meshtastic.app.di.AppKoinModule
-import org.meshtastic.app.di.module
-import org.meshtastic.app.widget.LocalStatsWidgetReceiver
-import org.meshtastic.app.worker.MeshLogCleanupWorker
+import org.koin.plugin.module.dsl.startKoin
+import org.meshtastic.app.di.AndroidKoinApp
 import org.meshtastic.core.common.ContextServices
 import org.meshtastic.core.database.DatabaseManager
 import org.meshtastic.core.repository.MeshPrefs
+import org.meshtastic.core.service.worker.MeshLogCleanupWorker
+import org.meshtastic.feature.widget.LocalStatsWidgetReceiver
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
@@ -58,16 +57,15 @@ open class MeshUtilApplication :
     Application(),
     Configuration.Provider {
 
-    private val applicationScope = CoroutineScope(Dispatchers.Default)
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
         ContextServices.app = this
 
-        startKoin {
+        startKoin<AndroidKoinApp> {
             androidContext(this@MeshUtilApplication)
             workManagerFactory()
-            modules(AppKoinModule().module())
         }
 
         // Schedule periodic MeshLog cleanup
@@ -93,7 +91,7 @@ open class MeshUtilApplication :
 
                 pushPreview()
 
-                val widgetStateProvider: org.meshtastic.app.widget.LocalStatsWidgetStateProvider = get()
+                val widgetStateProvider: org.meshtastic.feature.widget.LocalStatsWidgetStateProvider = get()
                 try {
                     // Wait for real data for up to 30 seconds before pushing an updated preview
                     withTimeout(30.seconds) {
@@ -119,7 +117,6 @@ open class MeshUtilApplication :
     override fun onTerminate() {
         // Shutdown managers (useful for Robolectric tests)
         get<DatabaseManager>().close()
-        get<AndroidEnvironment>().close()
         applicationScope.cancel()
         super.onTerminate()
         org.koin.core.context.stopKoin()
@@ -139,12 +136,4 @@ open class MeshUtilApplication :
 
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder().setWorkerFactory(get()).build()
-}
-
-fun logAssert(executeReliableWrite: Boolean) {
-    if (!executeReliableWrite) {
-        val ex = AssertionError("Assertion failed")
-        Logger.e(ex) { "logAssert" }
-        throw ex
-    }
 }

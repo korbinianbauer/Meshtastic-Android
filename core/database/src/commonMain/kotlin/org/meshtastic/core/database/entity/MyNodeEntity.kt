@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,12 +16,13 @@
  */
 package org.meshtastic.core.database.entity
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.PrimaryKey
 import org.meshtastic.core.model.MyNodeInfo
 
 @Entity(tableName = "my_node")
-data class MyNodeEntity(
+@Suppress("LongParameterList")
+open class MyNodeEntity(
     @PrimaryKey(autoGenerate = false) val myNodeNum: Int,
     val model: String?,
     val firmwareVersion: String?,
@@ -39,7 +40,7 @@ data class MyNodeEntity(
     val firmwareString: String
         get() = "$model $firmwareVersion"
 
-    fun toMyNodeInfo() = MyNodeInfo(
+    open fun toMyNodeInfo() = MyNodeInfo(
         myNodeNum = myNodeNum,
         hasGPS = false,
         model = model,

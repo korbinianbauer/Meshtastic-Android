@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,8 +24,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.twotone.ContentCopy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,8 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,13 +44,15 @@ import org.meshtastic.core.resources.copy
 import org.meshtastic.core.resources.okay
 import org.meshtastic.core.resources.qr_code
 import org.meshtastic.core.resources.url
+import org.meshtastic.core.ui.icon.Copy
+import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.core.ui.util.SetScreenBrightness
 import org.meshtastic.core.ui.util.createClipEntry
 
 private const val QR_IMAGE_SIZE = 320
 
 @Composable
-fun QrDialog(title: String, uriString: String, qrCode: ImageBitmap?, onDismiss: () -> Unit) {
+fun QrDialog(title: String, uriString: String, qrPainter: Painter?, onDismiss: () -> Unit) {
     val clipboardManager = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val label = stringResource(Res.string.url)
@@ -67,9 +66,9 @@ fun QrDialog(title: String, uriString: String, qrCode: ImageBitmap?, onDismiss: 
         onConfirm = onDismiss,
         text = {
             Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                if (qrCode != null) {
+                if (qrPainter != null) {
                     Image(
-                        painter = BitmapPainter(qrCode),
+                        painter = qrPainter,
                         contentDescription = stringResource(Res.string.qr_code),
                         modifier = Modifier.size(QR_IMAGE_SIZE.dp),
                         contentScale = ContentScale.Fit,
@@ -92,10 +91,7 @@ fun QrDialog(title: String, uriString: String, qrCode: ImageBitmap?, onDismiss: 
                             coroutineScope.launch { clipboardManager.setClipEntry(createClipEntry(uriString)) }
                         },
                     ) {
-                        Icon(
-                            imageVector = Icons.TwoTone.ContentCopy,
-                            contentDescription = stringResource(Res.string.copy),
-                        )
+                        Icon(imageVector = MeshtasticIcons.Copy, contentDescription = stringResource(Res.string.copy))
                     }
                 }
             }

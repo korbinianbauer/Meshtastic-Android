@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -71,7 +71,7 @@ interface PacketRepository {
     suspend fun updateLastReadMessage(contact: String, messageUuid: Long, lastReadTimestamp: Long)
 
     /** Returns all packets currently queued for transmission. */
-    suspend fun getQueuedPackets(): List<DataPacket>?
+    suspend fun getQueuedPackets(): List<DataPacket>
 
     /**
      * Persists a packet in the database.
@@ -178,8 +178,8 @@ interface PacketRepository {
         filtered: Boolean = false,
     )
 
-    /** Updates an existing packet in the database. */
-    suspend fun update(packet: DataPacket)
+    /** Updates an existing packet in the database, optionally setting a routing error code. */
+    suspend fun update(packet: DataPacket, routingError: Int = -1)
 
     /** Persists a message reaction (emoji). */
     suspend fun insertReaction(reaction: Reaction, myNodeNum: Int)

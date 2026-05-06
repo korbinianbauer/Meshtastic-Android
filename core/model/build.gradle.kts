@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,15 +20,12 @@ plugins {
     alias(libs.plugins.meshtastic.kotlinx.serialization)
     alias(libs.plugins.kotlin.parcelize)
     id("meshtastic.kmp.jvm.android")
-    `maven-publish`
+    id("meshtastic.publishing")
 }
-
-apply(from = rootProject.file("gradle/publishing.gradle.kts"))
 
 kotlin {
     jvm()
 
-    @Suppress("UnstableApiUsage")
     android {
         androidResources.enable = false
         withHostTest { isIncludeAndroidResources = true }
@@ -51,15 +48,6 @@ kotlin {
         androidMain.dependencies {
             api(libs.androidx.annotation)
             api(libs.androidx.core.ktx)
-            implementation(libs.zxing.core)
-        }
-        val androidHostTest by getting {
-            dependencies {
-                implementation(libs.junit)
-                implementation(libs.robolectric)
-                implementation(libs.mockk)
-                implementation(libs.androidx.test.ext.junit)
-            }
         }
         val androidDeviceTest by getting {
             dependencies {
@@ -67,6 +55,8 @@ kotlin {
                 implementation(libs.androidx.test.runner)
             }
         }
+
+        commonTest.dependencies { implementation(projects.core.testing) }
     }
 }
 

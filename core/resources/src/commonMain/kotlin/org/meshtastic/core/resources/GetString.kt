@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,12 +25,22 @@ fun getString(stringResource: StringResource): String = runBlocking { composeGet
 
 /** Retrieves a formatted string from the [StringResource] in a blocking manner. */
 fun getString(stringResource: StringResource, vararg formatArgs: Any): String = runBlocking {
-    val pattern = composeGetString(stringResource)
-    if (formatArgs.isNotEmpty()) {
+    val resolvedArgs =
+        formatArgs
+            .map { arg ->
+                if (arg is StringResource) {
+                    composeGetString(arg)
+                } else {
+                    arg
+                }
+            }
+            .toTypedArray()
+
+    if (resolvedArgs.isNotEmpty()) {
         @Suppress("SpreadOperator")
-        pattern.format(*formatArgs)
+        composeGetString(stringResource, *resolvedArgs)
     } else {
-        pattern
+        composeGetString(stringResource)
     }
 }
 
@@ -50,11 +60,10 @@ suspend fun getStringSuspend(stringResource: StringResource, vararg formatArgs: 
             }
             .toTypedArray()
 
-    val pattern = composeGetString(stringResource)
     return if (resolvedArgs.isNotEmpty()) {
         @Suppress("SpreadOperator")
-        pattern.format(*resolvedArgs)
+        composeGetString(stringResource, *resolvedArgs)
     } else {
-        pattern
+        composeGetString(stringResource)
     }
 }

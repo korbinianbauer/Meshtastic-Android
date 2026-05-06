@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,20 +16,41 @@
  */
 package org.meshtastic.core.ui.component
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import no.nordicsemi.android.common.core.registerReceiver
+import androidx.compose.ui.platform.LocalContext
+import org.meshtastic.core.common.util.nowMillis
 
 @Composable
 actual fun rememberTimeTickWithLifecycle(): Long {
-    var value by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val context = LocalContext.current
+    var value by remember { mutableLongStateOf(nowMillis) }
 
-    registerReceiver(IntentFilter(Intent.ACTION_TIME_TICK)) { value = System.currentTimeMillis() }
+    DisposableEffect(context) {
+        val receiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    value = nowMillis
+                }
+            }
+
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(Intent.ACTION_TIME_TICK),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+
+        onDispose { context.unregisterReceiver(receiver) }
+    }
 
     return value
 }

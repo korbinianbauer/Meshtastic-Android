@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,16 +15,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 plugins {
-    alias(libs.plugins.meshtastic.kmp.library)
-    alias(libs.plugins.meshtastic.kmp.library.compose)
+    alias(libs.plugins.meshtastic.kmp.feature)
     alias(libs.plugins.meshtastic.kotlinx.serialization)
-    alias(libs.plugins.meshtastic.koin)
 }
 
 kotlin {
-    jvm()
-
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.feature.map"
         androidResources.enable = false
@@ -33,7 +28,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(projects.core.common)
+            implementation(libs.jetbrains.navigation3.ui)
+            implementation(libs.kotlinx.collections.immutable)
             implementation(projects.core.data)
             implementation(projects.core.database)
             implementation(projects.core.datastore)
@@ -45,41 +41,6 @@ kotlin {
             implementation(projects.core.resources)
             implementation(projects.core.ui)
             implementation(projects.core.di)
-
-            implementation(libs.jetbrains.lifecycle.viewmodel.compose)
-            implementation(libs.koin.compose.viewmodel)
-        }
-
-        androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.androidx.compose.bom))
-            implementation(libs.androidx.datastore)
-            implementation(libs.androidx.datastore.preferences)
-            implementation(libs.accompanist.permissions)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.annotation)
-            implementation(libs.androidx.compose.material.iconsExtended)
-            implementation(libs.androidx.compose.material3)
-            implementation(libs.androidx.compose.ui.text)
-            implementation(libs.androidx.compose.ui.tooling.preview)
-            implementation(libs.jetbrains.lifecycle.runtime.compose)
-            implementation(libs.androidx.lifecycle.runtime.ktx)
-            implementation(libs.androidx.lifecycle.viewmodel.ktx)
-            implementation(libs.androidx.navigation.common)
-            implementation(libs.androidx.savedstate.compose)
-            implementation(libs.androidx.savedstate.ktx)
-            implementation(libs.material)
-            implementation(libs.kermit)
-        }
-
-        commonTest.dependencies { implementation(projects.core.testing) }
-
-        androidUnitTest.dependencies {
-            implementation(libs.junit)
-            implementation(libs.mockk)
-            implementation(libs.robolectric)
-            implementation(project.dependencies.platform(libs.androidx.compose.bom))
-            implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.androidx.test.core)
         }
     }
 }

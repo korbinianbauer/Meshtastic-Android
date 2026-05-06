@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,7 +19,6 @@ package org.meshtastic.core.domain.usecase.settings
 import org.koin.core.annotation.Single
 import org.meshtastic.core.repository.UiPrefs
 
-/** Use case for setting whether to provide the node location to the mesh. */
 @Single
 open class SetProvideLocationUseCase constructor(private val uiPrefs: UiPrefs) {
     operator fun invoke(myNodeNum: Int, provideLocation: Boolean) {

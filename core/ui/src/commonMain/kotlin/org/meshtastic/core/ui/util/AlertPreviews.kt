@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,13 +20,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import org.jetbrains.compose.resources.stringResource
+import org.meshtastic.core.resources.Res
+import org.meshtastic.core.resources.preview_custom_composable_line_one
+import org.meshtastic.core.resources.preview_custom_composable_line_two
 import org.meshtastic.core.ui.component.MeshtasticDialog
+import org.meshtastic.core.ui.icon.MeshtasticIcons
+import org.meshtastic.core.ui.icon.Warning
 import org.meshtastic.core.ui.theme.AppTheme
 
 /** A helper component that renders an [AlertManager.AlertData] using the same logic as MainScreen. */
@@ -75,7 +79,7 @@ fun PreviewIconAlert() {
                 AlertManager.AlertData(
                     title = "Warning",
                     message = "This action cannot be undone.",
-                    icon = Icons.Rounded.Warning,
+                    icon = MeshtasticIcons.Warning,
                 ),
             )
         }
@@ -120,8 +124,8 @@ fun PreviewComposableAlert() {
                     title = "Custom Content",
                     composableMessage = {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("This is a custom composable")
-                            Text("With multiple lines and styles")
+                            Text(stringResource(Res.string.preview_custom_composable_line_one))
+                            Text(stringResource(Res.string.preview_custom_composable_line_two))
                         }
                     },
                 ),

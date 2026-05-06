@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,10 +27,10 @@ import org.meshtastic.proto.MeshPacket
  *
  * This class is platform-agnostic and can be used in shared logic.
  */
-class MeshDataMapper(private val nodeIdLookup: NodeIdLookup) {
+open class MeshDataMapper(private val nodeIdLookup: NodeIdLookup) {
 
     /** Maps a [MeshPacket] to a [DataPacket], or returns null if the packet has no decoded data. */
-    fun toDataPacket(packet: MeshPacket): DataPacket? {
+    open fun toDataPacket(packet: MeshPacket): DataPacket? {
         val decoded = packet.decoded ?: return null
         return DataPacket(
             from = nodeIdLookup.toNodeID(packet.from),

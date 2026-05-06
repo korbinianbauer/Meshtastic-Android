@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ import org.meshtastic.core.repository.HomoglyphPrefs
 /** Use case for toggling the homoglyph encoding preference. */
 @Single
 open class ToggleHomoglyphEncodingUseCase constructor(private val homoglyphEncodingPrefs: HomoglyphPrefs) {
-    operator fun invoke() {
+    open operator fun invoke() {
         homoglyphEncodingPrefs.setHomoglyphEncodingEnabled(!homoglyphEncodingPrefs.homoglyphEncodingEnabled.value)
     }
 }

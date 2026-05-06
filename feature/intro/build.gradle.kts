@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,16 +16,11 @@
  */
 
 plugins {
-    alias(libs.plugins.meshtastic.kmp.library)
-    alias(libs.plugins.meshtastic.kmp.library.compose)
+    alias(libs.plugins.meshtastic.kmp.feature)
     alias(libs.plugins.meshtastic.kotlinx.serialization)
-    alias(libs.plugins.meshtastic.koin)
 }
 
 kotlin {
-    jvm()
-
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.feature.intro"
         androidResources.enable = false
@@ -40,32 +35,7 @@ kotlin {
             implementation(projects.core.ui)
             implementation(projects.core.resources)
 
-            implementation(libs.jetbrains.lifecycle.viewmodel.compose)
-            implementation(libs.koin.compose.viewmodel)
-            implementation(libs.jetbrains.navigation3.runtime)
-        }
-
-        androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.androidx.compose.bom))
-            implementation(libs.accompanist.permissions)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.compose.material3)
-            implementation(libs.androidx.compose.material.iconsExtended)
-            implementation(libs.androidx.compose.ui.text)
-            implementation(libs.androidx.compose.ui.tooling.preview)
             implementation(libs.jetbrains.navigation3.ui)
-        }
-
-        commonTest.dependencies { implementation(projects.core.testing) }
-
-        androidUnitTest.dependencies {
-            implementation(libs.junit)
-            implementation(libs.mockk)
-            implementation(libs.robolectric)
-            implementation(project.dependencies.platform(libs.androidx.compose.bom))
-            implementation(libs.androidx.test.core)
-            implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.androidx.compose.ui.test.junit4)
         }
     }
 }

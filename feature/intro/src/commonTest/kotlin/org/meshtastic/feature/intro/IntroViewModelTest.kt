@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  */
 package org.meshtastic.feature.intro
 
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -27,30 +28,35 @@ import kotlin.test.assertNull
  */
 class IntroViewModelTest {
 
-    private val viewModel = IntroViewModel()
+    private lateinit var viewModel: IntroViewModel
+
+    @BeforeTest
+    fun setUp() {
+        viewModel = IntroViewModel()
+    }
 
     @Test
     fun testWelcomeNavigatesNextToBluetooth() {
         val next = viewModel.getNextKey(Welcome, allPermissionsGranted = false)
-        assertEquals(Bluetooth, next, "Welcome should navigate to Bluetooth")
+        assertEquals(Bluetooth, next)
     }
 
     @Test
     fun testBluetoothNavigatesToLocation() {
         val next = viewModel.getNextKey(Bluetooth, allPermissionsGranted = false)
-        assertEquals(Location, next, "Bluetooth should navigate to Location")
+        assertEquals(Location, next)
     }
 
     @Test
     fun testLocationNavigatesToNotifications() {
         val next = viewModel.getNextKey(Location, allPermissionsGranted = false)
-        assertEquals(Notifications, next, "Location should navigate to Notifications")
+        assertEquals(Notifications, next)
     }
 
     @Test
     fun testNotificationsWithPermissionNavigatesToCriticalAlerts() {
         val next = viewModel.getNextKey(Notifications, allPermissionsGranted = true)
-        assertEquals(CriticalAlerts, next, "Notifications should navigate to CriticalAlerts when permissions granted")
+        assertEquals(CriticalAlerts, next)
     }
 
     @Test

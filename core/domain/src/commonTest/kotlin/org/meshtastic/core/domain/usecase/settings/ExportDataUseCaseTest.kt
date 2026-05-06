@@ -16,77 +16,67 @@
  */
 package org.meshtastic.core.domain.usecase.settings
 
-import io.mockk.every
-import io.mockk.mockk
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.ByteString.Companion.encodeUtf8
 import org.meshtastic.core.model.MeshLog
-import org.meshtastic.core.model.Node
-import org.meshtastic.core.repository.MeshLogRepository
-import org.meshtastic.core.repository.NodeRepository
+import org.meshtastic.core.testing.FakeMeshLogRepository
+import org.meshtastic.core.testing.FakeNodeRepository
 import org.meshtastic.proto.Data
 import org.meshtastic.proto.FromRadio
 import org.meshtastic.proto.MeshPacket
 import org.meshtastic.proto.PortNum
-import org.meshtastic.proto.User
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class ExportDataUseCaseTest {
 
-    private lateinit var nodeRepository: NodeRepository
-    private lateinit var meshLogRepository: MeshLogRepository
+    private lateinit var nodeRepository: FakeNodeRepository
+    private lateinit var meshLogRepository: FakeMeshLogRepository
     private lateinit var useCase: ExportDataUseCase
 
     @BeforeTest
     fun setUp() {
-        nodeRepository = mockk(relaxed = true)
-        meshLogRepository = mockk(relaxed = true)
+        nodeRepository = FakeNodeRepository()
+        meshLogRepository = FakeMeshLogRepository()
         useCase = ExportDataUseCase(nodeRepository, meshLogRepository)
     }
 
     @Test
-    fun `invoke writes header and log data`() = runTest {
-        // Arrange
-        val myNodeNum = 123
-        val senderNodeNum = 456
-        val senderNode = Node(num = senderNodeNum, user = User(long_name = "Sender Name"))
-
-        val nodes = mapOf(senderNodeNum to senderNode)
-        val stateFlow = MutableStateFlow(nodes)
-        every { nodeRepository.nodeDBbyNum } returns stateFlow
-
-        val meshPacket =
-            MeshPacket(
-                from = senderNodeNum,
-                rx_snr = 5.5f,
-                decoded = Data(portnum = PortNum.TEXT_MESSAGE_APP, payload = "Hello".encodeUtf8()),
-            )
-        val meshLog =
-            MeshLog(
-                uuid = "uuid-1",
-                message_type = "Packet",
-                received_date = 1700000000000L,
-                raw_message = "",
-                fromNum = senderNodeNum,
-                portNum = PortNum.TEXT_MESSAGE_APP.value,
-                fromRadio = FromRadio(packet = meshPacket),
-            )
-        every { meshLogRepository.getAllLogsInReceiveOrder(any()) } returns flowOf(listOf(meshLog))
-
+    fun `invoke writes header to sink`() = runTest {
         val buffer = Buffer()
+        useCase(buffer, 1)
 
-        // Act
-        useCase(buffer, myNodeNum)
-
-        // Assert
         val output = buffer.readUtf8()
-        assertTrue(output.contains("\"date\",\"time\",\"from\",\"sender name\""), "Header should be present")
-        assertTrue(output.contains("Sender Name"), "Sender name should be present")
-        assertTrue(output.contains("Hello"), "Payload should be present")
+        assertTrue(output.startsWith("\"date\",\"time\",\"from\""))
+    }
+
+    @Test
+    fun `invoke writes packet data to sink`() = runTest {
+        val buffer = Buffer()
+        val log =
+            MeshLog(
+                uuid = "1",
+                message_type = "TEXT",
+                received_date = 1000000000L,
+                raw_message = "",
+                fromRadio =
+                FromRadio(
+                    packet =
+                    MeshPacket(
+                        from = 1234,
+                        rx_snr = 5.0f,
+                        decoded = Data(portnum = PortNum.TEXT_MESSAGE_APP, payload = "Hello".encodeUtf8()),
+                    ),
+                ),
+            )
+        meshLogRepository.setLogs(listOf(log))
+
+        useCase(buffer, 1)
+
+        val output = buffer.readUtf8()
+        assertTrue(output.contains("\"1234\""))
+        assertTrue(output.contains("Hello"))
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,6 +42,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.baro_pressure
 import org.meshtastic.core.resources.env_metrics_log
+import org.meshtastic.core.resources.hardware_model
 import org.meshtastic.core.resources.humidity
 import org.meshtastic.core.resources.iaq
 import org.meshtastic.core.resources.node_id
@@ -54,15 +55,15 @@ import org.meshtastic.core.resources.temperature
 import org.meshtastic.core.resources.uptime
 import org.meshtastic.core.ui.icon.AirQuality
 import org.meshtastic.core.ui.icon.ArrowCircleUp
+import org.meshtastic.core.ui.icon.ElectricPower
 import org.meshtastic.core.ui.icon.HardwareModel
 import org.meshtastic.core.ui.icon.Humidity
 import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.core.ui.icon.NodeId
-import org.meshtastic.core.ui.icon.Paxcount
-import org.meshtastic.core.ui.icon.Power
+import org.meshtastic.core.ui.icon.PeopleCount
 import org.meshtastic.core.ui.icon.Pressure
 import org.meshtastic.core.ui.icon.Role
-import org.meshtastic.core.ui.icon.Soil
+import org.meshtastic.core.ui.icon.SoilMoisture
 import org.meshtastic.core.ui.icon.Temperature
 import org.meshtastic.core.ui.icon.role
 import org.meshtastic.proto.Config
@@ -125,7 +126,7 @@ fun SoilTemperatureInfo(
 ) {
     OverlayIconInfo(
         modifier = modifier,
-        icon = MeshtasticIcons.Soil,
+        icon = MeshtasticIcons.SoilMoisture,
         overlayIcon = MeshtasticIcons.Temperature,
         contentDescription = stringResource(Res.string.env_metrics_log),
         label = stringResource(Res.string.soil_temperature),
@@ -142,7 +143,7 @@ fun SoilMoistureInfo(
 ) {
     OverlayIconInfo(
         modifier = modifier,
-        icon = MeshtasticIcons.Soil,
+        icon = MeshtasticIcons.SoilMoisture,
         overlayIcon = MeshtasticIcons.Humidity,
         contentDescription = stringResource(Res.string.env_metrics_log),
         label = stringResource(Res.string.soil_moisture),
@@ -159,7 +160,7 @@ fun PaxcountInfo(
 ) {
     IconInfo(
         modifier = modifier,
-        icon = MeshtasticIcons.Paxcount,
+        icon = MeshtasticIcons.PeopleCount,
         contentDescription = stringResource(Res.string.pax_metrics_log),
         label = stringResource(Res.string.pax),
         text = pax,
@@ -192,7 +193,7 @@ fun PowerInfo(
 ) {
     IconInfo(
         modifier = modifier,
-        icon = MeshtasticIcons.Power,
+        icon = MeshtasticIcons.ElectricPower,
         contentDescription = stringResource(Res.string.env_metrics_log),
         label = label,
         text = value,
@@ -225,7 +226,7 @@ fun HardwareInfo(
     IconInfo(
         modifier = modifier,
         icon = MeshtasticIcons.HardwareModel,
-        contentDescription = "Hardware Model",
+        contentDescription = stringResource(Res.string.hardware_model),
         text = hwModel,
         style = MaterialTheme.typography.labelSmall,
         contentColor = contentColor,

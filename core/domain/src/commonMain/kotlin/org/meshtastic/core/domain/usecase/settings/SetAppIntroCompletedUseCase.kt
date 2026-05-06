@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,12 +17,11 @@
 package org.meshtastic.core.domain.usecase.settings
 
 import org.koin.core.annotation.Single
-import org.meshtastic.core.datastore.UiPreferencesDataSource
+import org.meshtastic.core.repository.UiPrefs
 
-/** Use case for setting whether the application intro has been completed. */
 @Single
-open class SetAppIntroCompletedUseCase constructor(private val uiPreferencesDataSource: UiPreferencesDataSource) {
-    operator fun invoke(completed: Boolean) {
-        uiPreferencesDataSource.setAppIntroCompleted(completed)
+open class SetAppIntroCompletedUseCase constructor(private val uiPrefs: UiPrefs) {
+    operator fun invoke(value: Boolean) {
+        uiPrefs.setAppIntroCompleted(value)
     }
 }

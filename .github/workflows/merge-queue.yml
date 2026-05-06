@@ -4,6 +4,9 @@ on:
   merge_group:
     types: [checks_requested]
 
+permissions:
+  contents: read
+
 concurrency:
   group: build-mq-${{ github.ref }}
   cancel-in-progress: true
@@ -13,13 +16,15 @@ jobs:
     if: github.repository == 'meshtastic/Meshtastic-Android'
     uses: ./.github/workflows/reusable-check.yml
     with:
-      api_levels: '[26, 35]' # Comprehensive testing for Merge Queue
+      run_lint: true
+      run_unit_tests: true
       upload_artifacts: false
     secrets: inherit
 
   check-workflow-status:
     name: Check Workflow Status
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
+    permissions: {}
     needs:
       - android-check
     if: always()

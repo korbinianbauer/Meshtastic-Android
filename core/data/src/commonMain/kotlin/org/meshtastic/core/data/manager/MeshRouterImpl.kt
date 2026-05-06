@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,6 @@
  */
 package org.meshtastic.core.data.manager
 
-import kotlinx.coroutines.CoroutineScope
 import org.koin.core.annotation.Single
 import org.meshtastic.core.repository.MeshActionHandler
 import org.meshtastic.core.repository.MeshConfigFlowManager
@@ -26,6 +25,7 @@ import org.meshtastic.core.repository.MeshRouter
 import org.meshtastic.core.repository.MqttManager
 import org.meshtastic.core.repository.NeighborInfoHandler
 import org.meshtastic.core.repository.TracerouteHandler
+import org.meshtastic.core.repository.XModemManager
 
 /** Implementation of [MeshRouter] that orchestrates specialized mesh packet handlers. */
 @Suppress("LongParameterList")
@@ -38,6 +38,7 @@ class MeshRouterImpl(
     private val configFlowManagerLazy: Lazy<MeshConfigFlowManager>,
     private val mqttManagerLazy: Lazy<MqttManager>,
     private val actionHandlerLazy: Lazy<MeshActionHandler>,
+    private val xmodemManagerLazy: Lazy<XModemManager>,
 ) : MeshRouter {
     override val dataHandler: MeshDataHandler
         get() = dataHandlerLazy.value
@@ -60,12 +61,6 @@ class MeshRouterImpl(
     override val actionHandler: MeshActionHandler
         get() = actionHandlerLazy.value
 
-    override fun start(scope: CoroutineScope) {
-        dataHandler.start(scope)
-        configHandler.start(scope)
-        tracerouteHandler.start(scope)
-        neighborInfoHandler.start(scope)
-        configFlowManager.start(scope)
-        actionHandler.start(scope)
-    }
+    override val xmodemManager: XModemManager
+        get() = xmodemManagerLazy.value
 }

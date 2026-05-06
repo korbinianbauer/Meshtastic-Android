@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,16 +16,11 @@
  */
 
 plugins {
-    alias(libs.plugins.meshtastic.kmp.library)
-    alias(libs.plugins.meshtastic.kmp.library.compose)
+    alias(libs.plugins.meshtastic.kmp.feature)
     alias(libs.plugins.meshtastic.kotlinx.serialization)
-    alias(libs.plugins.meshtastic.koin)
 }
 
 kotlin {
-    jvm()
-
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.feature.firmware"
         androidResources.enable = false
@@ -34,11 +29,13 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(libs.jetbrains.navigation3.ui)
             implementation(projects.core.ble)
             implementation(projects.core.common)
             implementation(projects.core.data)
             implementation(projects.core.database)
             implementation(projects.core.datastore)
+            implementation(projects.core.di)
             implementation(projects.core.model)
             implementation(projects.core.navigation)
             implementation(projects.core.network)
@@ -48,47 +45,16 @@ kotlin {
             implementation(projects.core.resources)
             implementation(projects.core.ui)
 
-            implementation(libs.jetbrains.lifecycle.viewmodel.compose)
-            implementation(libs.koin.compose.viewmodel)
-            implementation(libs.kermit)
+            implementation(libs.coil)
             implementation(libs.kotlinx.collections.immutable)
             implementation(libs.ktor.client.core)
-        }
-
-        androidMain.dependencies {
-            implementation(project.dependencies.platform(libs.androidx.compose.bom))
-            implementation(libs.accompanist.permissions)
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.androidx.appcompat)
-            implementation(libs.androidx.compose.material.iconsExtended)
-            implementation(libs.androidx.compose.material3)
-            implementation(libs.androidx.compose.ui.text)
-            implementation(libs.androidx.compose.ui.tooling.preview)
-            implementation(libs.androidx.navigation.common)
-            implementation(libs.coil)
-            implementation(libs.coil.network.okhttp)
-            implementation(libs.markdown.renderer.android)
-            implementation(libs.markdown.renderer.m3)
+            implementation(libs.ktor.network)
             implementation(libs.markdown.renderer)
-
-            // DFU / Nordic specific dependencies
-            implementation(libs.nordic.client.android)
-            implementation(libs.nordic.dfu)
+            implementation(libs.markdown.renderer.m3)
         }
+
+        androidMain.dependencies { implementation(libs.markdown.renderer.android) }
 
         commonTest.dependencies { implementation(projects.core.testing) }
-
-        androidUnitTest.dependencies {
-            implementation(libs.junit)
-            implementation(libs.mockk)
-            implementation(libs.robolectric)
-            implementation(libs.turbine)
-            implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.androidx.compose.ui.test.junit4)
-            implementation(libs.androidx.test.ext.junit)
-            implementation(libs.nordic.client.android.mock)
-            implementation(libs.nordic.client.core.mock)
-            implementation(libs.nordic.core.mock)
-        }
     }
 }

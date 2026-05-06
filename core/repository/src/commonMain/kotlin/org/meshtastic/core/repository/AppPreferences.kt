@@ -70,7 +70,48 @@ interface CustomEmojiPrefs {
 }
 
 /** Reactive interface for general UI preferences. */
+@Suppress("TooManyFunctions")
 interface UiPrefs {
+    val appIntroCompleted: StateFlow<Boolean>
+
+    fun setAppIntroCompleted(completed: Boolean)
+
+    val theme: StateFlow<Int>
+
+    fun setTheme(value: Int)
+
+    val locale: StateFlow<String>
+
+    fun setLocale(languageTag: String)
+
+    val nodeSort: StateFlow<Int>
+
+    fun setNodeSort(value: Int)
+
+    val includeUnknown: StateFlow<Boolean>
+
+    fun setIncludeUnknown(value: Boolean)
+
+    val excludeInfrastructure: StateFlow<Boolean>
+
+    fun setExcludeInfrastructure(value: Boolean)
+
+    val onlyOnline: StateFlow<Boolean>
+
+    fun setOnlyOnline(value: Boolean)
+
+    val onlyDirect: StateFlow<Boolean>
+
+    fun setOnlyDirect(value: Boolean)
+
+    val showIgnored: StateFlow<Boolean>
+
+    fun setShowIgnored(value: Boolean)
+
+    val excludeMqtt: StateFlow<Boolean>
+
+    fun setExcludeMqtt(value: Boolean)
+
     val hasShownNotPairedWarning: StateFlow<Boolean>
 
     fun setHasShownNotPairedWarning(shown: Boolean)
@@ -79,9 +120,53 @@ interface UiPrefs {
 
     fun setShowQuickChat(show: Boolean)
 
+    /** Whether BLE scanning should auto-start when the Connections screen is opened. */
+    val bleAutoScan: StateFlow<Boolean>
+
+    fun setBleAutoScan(enabled: Boolean)
+
+    /** Whether NSD network scanning should auto-start when the Connections screen is opened. */
+    val networkAutoScan: StateFlow<Boolean>
+
+    fun setNetworkAutoScan(enabled: Boolean)
+
+    /** Whether the BLE transport section is visible in the Connections device list. */
+    val showBleTransport: StateFlow<Boolean>
+
+    fun setShowBleTransport(enabled: Boolean)
+
+    /** Whether the network (TCP/NSD) transport section is visible in the Connections device list. */
+    val showNetworkTransport: StateFlow<Boolean>
+
+    fun setShowNetworkTransport(enabled: Boolean)
+
+    /** Whether the USB transport section is visible in the Connections device list. */
+    val showUsbTransport: StateFlow<Boolean>
+
+    fun setShowUsbTransport(enabled: Boolean)
+
     fun shouldProvideNodeLocation(nodeNum: Int): StateFlow<Boolean>
 
     fun setShouldProvideNodeLocation(nodeNum: Int, provide: Boolean)
+}
+
+/** Reactive interface for notification preferences. */
+interface NotificationPrefs {
+    val messagesEnabled: StateFlow<Boolean>
+
+    fun setMessagesEnabled(enabled: Boolean)
+
+    val nodeEventsEnabled: StateFlow<Boolean>
+
+    fun setNodeEventsEnabled(enabled: Boolean)
+
+    val nodeEventsAutoDisabledForEvent: StateFlow<Boolean>
+
+    fun setNodeEventsAutoDisabledForEvent(disabled: Boolean)
+
+    val lowBatteryEnabled: StateFlow<Boolean>
+
+    fun setLowBatteryEnabled(enabled: Boolean)
 }
 
 /** Reactive interface for general map preferences. */
@@ -129,7 +214,12 @@ interface MapTileProviderPrefs {
 interface RadioPrefs {
     val devAddr: StateFlow<String?>
 
+    /** The persisted user-visible name of the connected device (e.g. "Meshtastic_1234"). */
+    val devName: StateFlow<String?>
+
     fun setDevAddr(address: String?)
+
+    fun setDevName(name: String?)
 }
 
 fun RadioPrefs.isBle() = devAddr.value?.startsWith("x") == true
@@ -148,13 +238,16 @@ interface MeshPrefs {
 
     fun setDeviceAddress(address: String?)
 
-    fun shouldProvideNodeLocation(nodeNum: Int?): StateFlow<Boolean>
-
-    fun setShouldProvideNodeLocation(nodeNum: Int?, provide: Boolean)
-
     fun getStoreForwardLastRequest(address: String?): StateFlow<Int>
 
     fun setStoreForwardLastRequest(address: String?, timestamp: Int)
+}
+
+/** Reactive interface for TAK server settings. */
+interface TakPrefs {
+    val isTakServerEnabled: StateFlow<Boolean>
+
+    fun setTakServerEnabled(enabled: Boolean)
 }
 
 /** Consolidated interface for all application preferences. */
@@ -170,4 +263,5 @@ interface AppPreferences {
     val mapTileProvider: MapTileProviderPrefs
     val radio: RadioPrefs
     val mesh: MeshPrefs
+    val tak: TakPrefs
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,14 +16,11 @@
  */
 
 import com.android.build.api.dsl.ApplicationExtension
-import com.mikepenz.aboutlibraries.plugin.DuplicateMode
-import com.mikepenz.aboutlibraries.plugin.DuplicateRule
-import org.meshtastic.buildlogic.GitVersionValueSource
 import org.meshtastic.buildlogic.configProperties
-import java.io.FileInputStream
+import org.meshtastic.buildlogic.resolveVersionInfo
 import java.util.Properties
 
-val gitVersionProvider = providers.of(GitVersionValueSource::class.java) {}
+val versionInfo = resolveVersionInfo()
 
 plugins {
     alias(libs.plugins.meshtastic.android.application)
@@ -31,16 +28,16 @@ plugins {
     alias(libs.plugins.meshtastic.android.application.compose)
     id("meshtastic.koin")
     alias(libs.plugins.kotlin.parcelize)
-    alias(libs.plugins.devtools.ksp)
     alias(libs.plugins.secrets)
-    alias(libs.plugins.aboutlibraries)
+    id("meshtastic.aboutlibraries")
+    id("dev.mokkery")
 }
 
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
 
 if (keystorePropertiesFile.exists()) {
-    FileInputStream(keystorePropertiesFile).use { keystoreProperties.load(it) }
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }
 
 configure<ApplicationExtension> {
@@ -57,29 +54,16 @@ configure<ApplicationExtension> {
     defaultConfig {
         applicationId = configProperties.getProperty("APPLICATION_ID")
 
-        val vcOffset = configProperties.getProperty("VERSION_CODE_OFFSET")?.toInt() ?: 0
-        println("Version code offset: $vcOffset")
-        versionCode =
-            (
-                project.findProperty("android.injected.version.code")?.toString()?.toInt()
-                    ?: System.getenv("VERSION_CODE")?.toInt()
-                    ?: (gitVersionProvider.get().toInt() + vcOffset)
-                )
-        versionName =
-            (
-                project.findProperty("android.injected.version.name")?.toString()
-                    ?: System.getenv("VERSION_NAME")
-                    ?: configProperties.getProperty("VERSION_NAME_BASE")
-                )
-        buildConfigField("String", "MIN_FW_VERSION", "\"${configProperties.getProperty("MIN_FW_VERSION")}\"")
-        buildConfigField("String", "ABS_MIN_FW_VERSION", "\"${configProperties.getProperty("ABS_MIN_FW_VERSION")}\"")
+        versionCode = versionInfo.versionCode
+        versionName = versionInfo.versionName
+        buildConfigField("String", "MIN_FW_VERSION", "\"${versionInfo.minFwVersion}\"")
+        buildConfigField("String", "ABS_MIN_FW_VERSION", "\"${versionInfo.absMinFwVersion}\"")
         // We have to list all translated languages here,
         // because some of our libs have bogus languages that google play
         // doesn't like and we need to strip them (gr)
-        @Suppress("UnstableApiUsage")
-        val ci = project.findProperty("ci")?.toString()?.toBoolean() ?: false
+        val ci = providers.gradleProperty("ci").map { it.toBoolean() }.getOrElse(false)
         if (ci) {
-            println("CI build detected - limiting locale filters for faster packaging")
+            logger.lifecycle("CI build detected - limiting locale filters for faster packaging")
             androidResources.localeFilters.addAll(listOf("en"))
         } else {
             androidResources.localeFilters.addAll(
@@ -128,29 +112,38 @@ configure<ApplicationExtension> {
         }
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
 
-        val disableSplits =
-            project.gradle.startParameter.taskNames.any {
-                it.contains("bundle", ignoreCase = true) || it.contains("google", ignoreCase = true)
-            }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
 
-        // Enable ABI splits to generate smaller APKs per architecture for F-Droid/IzzyOnDroid
-        splits {
-            abi {
-                isEnable = !disableSplits
-                reset()
-                include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-                isUniversalApk = true
-            }
+    // Disable ABI splits for bundle builds or when explicitly requested via Gradle property.
+    // Usage: ./gradlew :app:bundleGoogleRelease -Pmeshtastic.disableAbiSplits=true
+    val disableSplits = providers.gradleProperty("meshtastic.disableAbiSplits").map { it.toBoolean() }.getOrElse(false)
+
+    // Enable ABI splits to generate smaller APKs per architecture for F-Droid/IzzyOnDroid
+    splits {
+        abi {
+            isEnable = !disableSplits
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
         }
+    }
 
-        dependenciesInfo {
-            // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
-            includeInApk = false
-            // Disables dependency metadata when building Android App Bundles (for Google Play)
-            includeInBundle = false
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
+    }
+
+    packaging {
+        jniLibs {
+            // Keep debug symbols in native libraries so reproducible builds don't depend
+            // on the exact NDK version used for stripping. This avoids RB failures when
+            // IzzyOnDroid/F-Droid rebuilds use a different NDK than our CI.
+            // See: https://github.com/meshtastic/Meshtastic-Android/issues/3231
+            keepDebugSymbols.add("**/*.so")
         }
-
-        testInstrumentationRunner = "org.meshtastic.app.TestRunner"
     }
 
     // Configure existing product flavors (defined by convention plugin)
@@ -171,8 +164,6 @@ configure<ApplicationExtension> {
             } else {
                 signingConfig = signingConfigs.getByName("debug")
             }
-            isMinifyEnabled = true
-            isShrinkResources = true
             isDebuggable = false
         }
     }
@@ -188,7 +179,7 @@ secrets {
 
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
-        variant.flavorName?.let { flavor -> variant.applicationId = "com.geeksville.mesh.$flavor.debug" }
+        variant.flavorName?.let { flavor -> variant.applicationId.set("com.geeksville.mesh.$flavor.debug") }
     }
 
     onVariants(selector().withBuildType("release")) { variant ->
@@ -196,17 +187,12 @@ androidComponents {
             val variantNameCapped = variant.name.replaceFirstChar { it.uppercase() }
             val minifyTaskName = "minify${variantNameCapped}WithR8"
             val uploadTaskName = "uploadMapping$variantNameCapped"
-            if (project.tasks.findByName(uploadTaskName) != null && project.tasks.findByName(minifyTaskName) != null) {
+            // Use tasks.names to check existence without eagerly realizing tasks
+            if (tasks.names.contains(uploadTaskName) && tasks.names.contains(minifyTaskName)) {
                 tasks.named(minifyTaskName).configure { finalizedBy(uploadTaskName) }
             }
         }
     }
-}
-
-project.afterEvaluate {
-    logger.lifecycle(
-        "Version code is set to: ${extensions.getByType<ApplicationExtension>().defaultConfig.versionCode}",
-    )
 }
 
 dependencies {
@@ -219,6 +205,7 @@ dependencies {
     implementation(projects.core.domain)
     implementation(projects.core.model)
     implementation(projects.core.navigation)
+    implementation(libs.jetbrains.lifecycle.viewmodel.navigation3)
     implementation(projects.core.network)
     implementation(projects.core.nfc)
     implementation(projects.core.prefs)
@@ -227,6 +214,7 @@ dependencies {
     implementation(projects.core.resources)
     implementation(projects.core.ui)
     implementation(projects.core.barcode)
+    implementation(projects.core.takserver)
     implementation(projects.feature.intro)
     implementation(projects.feature.messaging)
     implementation(projects.feature.connections)
@@ -234,51 +222,42 @@ dependencies {
     implementation(projects.feature.node)
     implementation(projects.feature.settings)
     implementation(projects.feature.firmware)
+    implementation(projects.feature.wifiProvision)
+    implementation(projects.feature.widget)
 
     implementation(libs.jetbrains.compose.material3.adaptive)
     implementation(libs.jetbrains.compose.material3.adaptive.layout)
     implementation(libs.jetbrains.compose.material3.adaptive.navigation)
-    implementation(libs.androidx.compose.material3.navigationSuite)
     implementation(libs.material)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.iconsExtended)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.ui.text)
+    implementation(libs.compose.multiplatform.animation)
+    implementation(libs.compose.multiplatform.material3)
+    implementation(libs.compose.multiplatform.ui.tooling.preview)
+    implementation(libs.compose.multiplatform.ui)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.appwidget.preview)
     implementation(libs.androidx.glance.material3)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.jetbrains.lifecycle.viewmodel.compose)
     implementation(libs.jetbrains.lifecycle.runtime.compose)
-    implementation(libs.jetbrains.navigation3.runtime)
     implementation(libs.jetbrains.navigation3.ui)
-    implementation(libs.androidx.paging.compose)
-    implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.android)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.coil.network.okhttp)
+    implementation(libs.ktor.client.logging)
+    implementation(libs.coil)
+    implementation(libs.coil.network.ktor3)
     implementation(libs.coil.svg)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp3.logging.interceptor)
-    implementation(libs.org.eclipse.paho.client.mqttv3)
     implementation(libs.usb.serial.android)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.koin.android)
-    implementation(libs.koin.androidx.compose)
     implementation(libs.koin.compose.viewmodel)
     implementation(libs.koin.androidx.workmanager)
     implementation(libs.koin.annotations)
     implementation(libs.accompanist.permissions)
     implementation(libs.kermit)
     implementation(libs.kotlinx.datetime)
-
-    implementation(libs.nordic.client.android)
-    implementation(libs.nordic.common.core)
-    implementation(libs.nordic.common.permissions.ble)
-    implementation(libs.nordic.common.permissions.notification)
-    implementation(libs.nordic.common.scanner.ble)
-    implementation(libs.nordic.common.ui)
 
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.glance.preview)
@@ -288,10 +267,10 @@ dependencies {
     googleImplementation(libs.maps.compose)
     googleImplementation(libs.maps.compose.utils)
     googleImplementation(libs.maps.compose.widgets)
-    googleImplementation(libs.dd.sdk.android.okhttp)
-    googleImplementation(libs.dd.sdk.android.compose)
     googleImplementation(libs.dd.sdk.android.logs)
     googleImplementation(libs.dd.sdk.android.rum)
+    googleImplementation(libs.dd.sdk.android.session.replay)
+    googleImplementation(libs.dd.sdk.android.session.replay.material)
     googleImplementation(libs.dd.sdk.android.timber)
     googleImplementation(libs.dd.sdk.android.trace)
     googleImplementation(libs.dd.sdk.android.trace.otel)
@@ -303,46 +282,14 @@ dependencies {
     fdroidImplementation(libs.osmdroid.geopackage) { exclude(group = "com.j256.ormlite") }
     fdroidImplementation(libs.osmbonuspack)
 
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    androidTestImplementation(libs.kotlinx.coroutines.test)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.nordic.client.android.mock)
-    androidTestImplementation(libs.nordic.core.mock)
-    androidTestImplementation(libs.koin.test)
-
+    testImplementation(kotlin("test-junit"))
     testImplementation(libs.androidx.work.testing)
     testImplementation(libs.koin.test)
-    testImplementation(libs.junit)
-    testImplementation(libs.mockk)
+    testRuntimeOnly(libs.junit.vintage.engine)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(libs.nordic.client.android.mock)
-    testImplementation(libs.nordic.client.core.mock)
-    testImplementation(libs.nordic.core.mock)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.compose.multiplatform.ui.test)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.androidx.glance.appwidget)
-}
-
-aboutLibraries {
-    // Fetch full license text + funding info from GitHub API when on CI with a token
-    val isCi = providers.gradleProperty("ci").map { it.toBoolean() }.getOrElse(false)
-    val ghToken = providers.environmentVariable("GITHUB_TOKEN")
-    collect {
-        fetchRemoteLicense = isCi && ghToken.isPresent
-        fetchRemoteFunding = isCi && ghToken.isPresent
-        if (ghToken.isPresent) {
-            gitHubApiToken = ghToken.get()
-        }
-    }
-    export {
-        excludeFields = listOf("generated")
-        outputFile = file("src/main/resources/aboutlibraries.json")
-    }
-    library {
-        duplicationMode = DuplicateMode.MERGE
-        duplicationRule = DuplicateRule.SIMPLE
-    }
 }

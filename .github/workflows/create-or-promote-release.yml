@@ -20,16 +20,22 @@ on:
         required: true
         type: boolean
         default: false
+      build_desktop:
+        description: 'Whether to build the desktop distribution'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
+  statuses: write
   id-token: write
   attestations: write
 
 jobs:
   determine-tags:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       tag_to_process: ${{ steps.calculate_tags.outputs.tag_to_process }}
       release_name: ${{ steps.calculate_tags.outputs.release_name }}
@@ -124,6 +130,7 @@ jobs:
       tag_name: ${{ needs.determine-tags.outputs.final_tag }}
       channel: ${{ inputs.channel }}
       base_version: ${{ inputs.base_version }}
+      build_desktop: ${{ inputs.build_desktop }}
     secrets: inherit
 
   call-promote-workflow:
@@ -142,7 +149,7 @@ jobs:
   cleanup-on-failure:
     needs: [determine-tags, call-release-workflow]
     if: ${{ (failure() || cancelled()) && !inputs.dry_run && inputs.channel == 'internal' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout code
         uses: actions/checkout@v6

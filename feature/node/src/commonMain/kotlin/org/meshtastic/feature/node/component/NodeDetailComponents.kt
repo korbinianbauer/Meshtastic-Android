@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.meshtastic.core.resources.Res
+import org.meshtastic.core.resources.a11y_label_value
 import org.meshtastic.core.resources.copy
 import org.meshtastic.core.ui.util.createClipEntry
 
@@ -94,6 +95,7 @@ internal fun InfoItem(
     val clipboard: Clipboard = LocalClipboard.current
     val coroutineScope = rememberCoroutineScope()
     val copyLabel = stringResource(Res.string.copy)
+    val contentDescriptionText = stringResource(Res.string.a11y_label_value, label, value)
 
     Column(
         modifier =
@@ -109,7 +111,7 @@ internal fun InfoItem(
             .padding(horizontal = 20.dp, vertical = 8.dp)
             .semantics(mergeDescendants = true) {
                 // Screen readers read as a unified data unit
-                contentDescription = "$label: $value"
+                contentDescription = contentDescriptionText
             },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

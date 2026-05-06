@@ -1,6 +1,6 @@
 # KMP Migration Status
 
-> Last updated: 2026-03-13
+> Last updated: 2026-04-15
 
 Single source of truth for Kotlin Multiplatform migration progress. For the forward-looking roadmap, see [`roadmap.md`](./roadmap.md). For completed decision records, see [`decisions/`](./decisions/).
 
@@ -12,7 +12,7 @@ Modules that share JVM-specific code between Android and desktop now standardize
 
 ## Module Inventory
 
-### Core Modules (20 total)
+### Core Modules (21 total)
 
 | Module | KMP? | JVM target? | Notes |
 |---|:---:|:---:|---|
@@ -27,42 +27,46 @@ Modules that share JVM-specific code between Android and desktop now standardize
 | `core:database` | ✅ | ✅ | Room KMP |
 | `core:domain` | ✅ | ✅ | UseCases |
 | `core:prefs` | ✅ | ✅ | Preferences layer |
-| `core:network` | ✅ | ✅ | Ktor, `StreamFrameCodec`, `TcpTransport` |
+| `core:network` | ✅ | ✅ | Ktor, `StreamFrameCodec`, `TcpTransport`, `SerialTransport`, `BleRadioTransport` |
 | `core:data` | ✅ | ✅ | Data orchestration |
-| `core:ble` | ✅ | ✅ | BLE abstractions in commonMain; Nordic in androidMain |
+| `core:ble` | ✅ | ✅ | Kable multiplatform BLE abstractions in commonMain |
 | `core:nfc` | ✅ | ✅ | NFC contract in commonMain; hardware in androidMain |
 | `core:service` | ✅ | ✅ | Service layer; Android bindings in androidMain |
-| `core:ui` | ✅ | ✅ | Shared Compose UI, `jvmAndroidMain` + `jvmMain` actuals |
+| `core:ui` | ✅ | ✅ | Shared Compose UI, pure KMP QR generator, `jvmAndroidMain` + `jvmMain` actuals |
 | `core:testing` | ✅ | ✅ | Shared test doubles, fakes, and utilities for `commonTest` |
+| `core:takserver` | ✅ | ✅ | TAK/ATAK integration, Fountain codec |
 | `core:api` | ❌ | — | Android-only (AIDL). Intentional. |
 | `core:barcode` | ❌ | — | Android-only (CameraX). Flavor split minimised to decoder factory only (ML Kit / ZXing). Shared contract in `core:ui`. |
 
-**18/20** core modules are KMP with JVM targets. The 2 Android-only modules are intentionally platform-specific, with shared contracts already abstracted into `core:ui/commonMain`.
+**19/21** core modules are KMP with JVM targets. The 2 Android-only modules are intentionally platform-specific, with shared contracts already abstracted into `core:ui/commonMain`.
 
-### Feature Modules (7 total — all KMP with JVM)
+### Feature Modules (9 total — 9 KMP with JVM, 1 Android-only widget)
 
 | Module | UI in commonMain? | Desktop wired? |
 |---|:---:|:---:|
-| `feature:settings` | ✅ | ✅ ~35 real screens; shared `ChannelViewModel` |
-| `feature:node` | ✅ | ✅ Adaptive list-detail; shared `NodeContextMenu` |
-| `feature:messaging` | ✅ | ✅ Adaptive contacts + messages; 17 shared files in commonMain (ViewModels, MessageBubble, MessageItem, QuickChat, Reactions, DeliveryInfo, actions, events) |
+| `feature:settings` | ✅ | ✅ ~35 real screens; fully shared `settingsGraph` and UI |
+| `feature:node` | ✅ | ✅ Adaptive list-detail; fully shared `nodesGraph`, `PositionLogScreen`, and `NodeContextMenu` |
+| `feature:messaging` | ✅ | ✅ Adaptive contacts + messages; fully shared `contactsGraph`, `MessageScreen`, `ContactsScreen`, and `MessageListPaged` |
 | `feature:connections` | ✅ | ✅ Shared `ConnectionsScreen` with dynamic transport detection |
-| `feature:intro` | ✅ | — |
-| `feature:map` | ✅ | Placeholder; shared `NodeMapViewModel` |
-| `feature:firmware` | — | Placeholder; DFU is Android-only |
+| `feature:intro` | — | — | Screens remain in `androidMain`; shared ViewModel only |
+| `feature:map` | — | Placeholder; shared `NodeMapViewModel`, `BaseMapViewModel`. Map rendering decomposed into 3 `CompositionLocal` provider contracts (`MapViewProvider`, `NodeTrackMapProvider`, `TracerouteMapProvider`) with per-flavor implementations in `:app` |
+| `feature:firmware` | ✅ | ✅ Fully KMP: Unified OTA, native Secure DFU, USB/UF2, FirmwareRetriever |
+| `feature:wifi-provision` | ✅ | ✅ KMP WiFi provisioning via BLE (Nymea protocol); shared UI and ViewModel |
+| `feature:widget` | ❌ | — | Android-only (Glance appwidgets). Intentional. |
 
 ### Desktop Module
 
 Working Compose Desktop application with:
 - Navigation 3 shell (`NavigationRail` + `NavDisplay`) using shared routes
 - Full Koin DI graph (stubs + real implementations)
-- TCP transport with auto-reconnect and full `want_config` handshake
+- TCP, Serial/USB, and BLE transports with auto-reconnect and full `want_config` handshake
 - Adaptive list-detail screens for nodes and contacts
-- **Dynamic Connections screen** with automatic discovery of platform-supported transports (TCP)
+- **Dynamic Connections screen** with automatic discovery of platform-supported transports (TCP, Serial/USB, BLE)
 - **Desktop language picker** backed by `UiPreferencesDataSource.locale`, with immediate Compose Multiplatform resource updates
 - **Navigation-preserving locale switching** via `Main.kt` `staticCompositionLocalOf` recomposition instead of recreating the Nav3 backstack
 - Node detail metrics screens (Device, Environment, Signal, Power, Pax) wired with shared KMP + Vico charts
-- 7 desktop-specific screens (Settings, Device, Position, Network, Security, ExternalNotification, Debug)
+- **Feature-driven Architecture:** Desktop navigation completely relies on feature modules via `commonMain` exported graphs (`settingsGraph`, `nodesGraph`, `contactsGraph`, etc.), reducing the desktop module to a simple host shell.
+- **Native notifications and system tray icon** wired via `DesktopNotificationManager`
 - **Native release pipeline** generating `.dmg` (macOS), `.msi` (Windows), and `.deb` (Linux) installers in CI
 
 ## Scorecard
@@ -70,82 +74,99 @@ Working Compose Desktop application with:
 | Area | Score | Notes |
 |---|---|---|
 | Shared business/data logic | **9/10** | All core layers shared; RadioTransport interface unified |
-| Shared feature/UI logic | **8.5/10** | All 7 KMP; feature:connections unified with dynamic transport detection |
-| Android decoupling | **8/10** | No known `java.*` calls in `commonMain`; app module extraction in progress |
-| Multi-target readiness | **8/10** | Full JVM; release-ready desktop; iOS not declared |
-| CI confidence | **9/10** | 25 modules validated (including feature:connections); native release installers automated |
+| Shared feature/UI logic | **9/10** | 9 KMP feature modules; firmware fully migrated; wifi-provision added; `feature:intro` and `feature:map` share ViewModels but UI remains in `androidMain` |
+| Android decoupling | **9/10** | No known `java.*` calls in `commonMain`; app module extraction in progress (navigation, connections, background services, and widgets extracted) |
+| Multi-target readiness | **9/10** | Full JVM; release-ready desktop; iOS simulator builds compiling successfully |
+| CI confidence | **9/10** | 26 modules validated (including feature:wifi-provision); native release installers automated |
 | DI portability | **8/10** | Koin annotations in commonMain; supportedDeviceTypes injected per platform |
-| Test maturity | **8/10** | 131 commonTest + 89 platform-specific = 219 tests across all 7 features; core:testing established |
-
-> See [`decisions/architecture-review-2026-03.md`](./decisions/architecture-review-2026-03.md) for the full gap analysis.
+| Test maturity | **9/10** | Mokkery, Turbine, and Kotest integrated; property-based testing established; broad coverage across all 9 features. SfppHasher, AddressUtils, formatString hex, and MetricFormatter edge cases newly covered. Gaps: `core:service`, `core:network` (TcpTransport), `core:ble` state machine, `core:ui` utils |
 
 ## Completion Estimates
 
 | Lens | % |
 |---|---:|
-| Android-first structural KMP | ~98% |
-| Shared business logic | ~95% |
-| Shared feature/UI | ~90% |
-| True multi-target readiness | ~75% |
-| "Add iOS without surprises" | ~65% |
+| Android-first structural KMP | ~100% |
+| Shared business logic | ~98% |
+| Shared feature/UI | ~92% |
+| True multi-target readiness | ~85% |
+| "Add iOS without surprises" | ~100% |
 
 ## Proposed Next Steps for KMP Migration
 
 Based on the latest codebase investigation, the following steps are proposed to complete the multi-target and iOS-readiness migrations:
 
-1. **Extract remaining App-Only ViewModels:** Migrate the 5 remaining `Android*ViewModel`s by isolating their Android-specific dependencies (e.g., `android.net.Uri` for file I/O, Location permissions) behind expect/actual or injected interface abstractions.
-2. **Wire Desktop Features:** Complete desktop UI wiring for `feature:intro` and implement a shared fallback for `feature:map` (which is currently a placeholder on desktop).
-3. **Decouple Firmware DFU:** `feature:firmware` relies on Android-only DFU libraries. Evaluate wrapping this in a shared KMP interface or extracting it into a separate plugin to allow the core `feature:firmware` module to be fully utilized on desktop/iOS.
-4. **Prepare for iOS Target:** Set up an initial skeleton Xcode project to start validating `commonMain` compilation on Kotlin/Native (iOS).
+1. **Wire Desktop Features:** Complete desktop UI wiring for `feature:intro` and implement a shared fallback for `feature:map` (which is currently a placeholder on desktop).
+2. **Flesh out iOS Actuals:** Complete the actual implementations for iOS UI stubs (e.g., `AboutLibrariesLoader`, `rememberOpenMap`, `SettingsMainScreen`) that were recently added to unblock iOS compilation.
+3. **Boot iOS Target:** Set up an initial skeleton Xcode project to start running the now-compiling `iosSimulatorArm64` / `iosArm64` binaries on a real simulator/device.
 
 ## Key Architecture Decisions
 
 | Decision | Status | Details |
 |---|---|---|
-| Navigation 3 parity model (shared `TopLevelDestination` + platform adapters) | ✅ Done | Both shells use shared enum + parity tests. See [`decisions/navigation3-parity-2026-03.md`](./decisions/navigation3-parity-2026-03.md) |
+| Navigation 3 parity model (shared `TopLevelDestination` + platform adapters) | ✅ Done | Both shells use shared `TopLevelDestination` enum and `MeshtasticNavDisplay` from `core:ui/commonMain`; parity tests in `core:navigation/commonTest` |
 | Hilt → Koin | ✅ Done | See [`decisions/koin-migration.md`](./decisions/koin-migration.md) |
-| BLE abstraction (Nordic Hybrid) | ✅ Done | See [`decisions/ble-strategy.md`](./decisions/ble-strategy.md) |
-| Material 3 Adaptive (JetBrains) | ✅ Done | Version `1.3.0-alpha06` aligned with CMP `1.11.0-alpha04` |
+| BLE abstraction (Kable) | ✅ Done | See [`decisions/ble-strategy.md`](./decisions/ble-strategy.md) |
+| Firmware KMP migration (pure Secure DFU) | ✅ Done | Native Nordic Secure DFU protocol reimplemented in pure KMP using Kable; desktop is first-class target |
+| Material 3 Adaptive (JetBrains) | ✅ Done | Version `1.3.0-alpha06` aligned with CMP `1.11.0-beta02`; supports Large (1200dp) and Extra-large (1600dp) breakpoints |
 | JetBrains lifecycle/nav3 alias alignment | ✅ Done | All forked deps use `jetbrains-*` prefix in version catalog; `core:data` commonMain uses JetBrains lifecycle runtime |
-| Expect/actual consolidation | ✅ Done | 7 pairs eliminated; 15+ genuinely platform-specific retained |
-| Transport deduplication | ✅ Done | `StreamFrameCodec` + `TcpTransport` shared in `core:network` |
-| **Transport UI Unification** | ✅ Done | `RadioInterfaceService` provides dynamic transport capability to shared UI |
+| Expect/actual consolidation | ✅ Done | 10+ pairs eliminated (including `formatString`, `CommonUri`, `SfppHasher`); ~20 genuinely platform-specific retained (Parcelable, DateFormatter, Database, Location, Composable UI primitives) |
+| Transport deduplication | ✅ Done | `StreamFrameCodec`, `TcpTransport`, and `SerialTransport` shared in `core:network` |
+| **Transport Lifecycle Unification** | ✅ Done | `SharedRadioInterfaceService` orchestrates auto-reconnect, connection state, and heartbeat uniformly across Android and Desktop. |
+| **Database Parity** | ✅ Done | `DatabaseManager` is pure KMP, giving iOS and Desktop support for multiple connected nodes with LRU caching. On JVM/Desktop, inactive databases are explicitly closed on switch (Room KMP's `setAutoCloseTimeout` is Android-only), and `desktopDataDir()` in `core:database/jvmMain` is the single source for data directory resolution. |
 | Emoji picker unification | ✅ Done | Single commonMain implementation replacing 3 platform variants |
+| Cross-platform deduplication pass | ✅ Done | Extracted shared `AlertHost`, `SharedDialogs`, `PlaceholderScreen`, `ThemePickerDialog`, `MeshtasticNavDisplay`, `formatLogsTo()`, `handleNodeAction()`, `findNodeByNameSuffix()`, `MeshtasticAppShell`, `BleRadioTransport`, and `BaseRadioTransportFactory` to `commonMain`; eliminated ~1,200 lines of duplicated Compose UI code across Android/desktop |
+| URI unification | ✅ Done | `CommonUri` is a `typealias` to `com.eygraber.uri.Uri` (uri-kmp); `MeshtasticUri` wrapper deleted; bridge with `toAndroidUri()`/`toKmpUri()` |
+| Utility commonization | ✅ Done | `formatString` → pure Kotlin parser in `commonMain`; `SfppHasher` and `CryptoCodec` → `Okio ByteString.sha256()`; `MetricFormatter` centralizes display strings (temperature, voltage, current, %, humidity, pressure, SNR, RSSI) |
 
 ## Navigation Parity Note
 
 - Desktop and Android both use the shared `TopLevelDestination` enum from `core:navigation/commonMain` — no separate `DesktopDestination` remains.
+- Both shells utilize the **Navigation 3 Scene-based architecture**, allowing for multi-pane layouts (e.g., three-pane on Large/XL displays) using shared routes.
 - Both shells iterate `TopLevelDestination.entries` with shared icon mapping from `core:ui` (`TopLevelDestinationExt.icon`).
 - Desktop locale changes now trigger a full subtree recomposition from `Main.kt` without resetting the shared Navigation 3 backstack, so translated labels update in place.
 - Firmware remains available as an in-flow route instead of a top-level destination, matching Android information architecture.
+- Android navigation graphs are decoupled and extracted into their respective feature modules, aligning with the Desktop architecture.
 - Parity tests exist in `core:navigation/commonTest` (`NavigationParityTest`) and `desktop/test` (`DesktopTopLevelDestinationParityTest`).
-- Remaining parity work is documented in [`decisions/navigation3-parity-2026-03.md`](./decisions/navigation3-parity-2026-03.md): serializer registration validation and platform exception tracking.
+- Remaining parity work: serializer registration validation and platform exception tracking.
 
-## Remaining App-Only ViewModels
+## App Module Thinning Status
 
-Only ViewModels with **genuine Android-specific logic** retain wrappers:
+All major ViewModels have now been extracted to `commonMain` and no longer rely on Android-specific subclasses. Platform-specific dependencies (like `android.net.Uri` or Location permissions) have been successfully isolated behind injected `core:repository` interfaces (e.g., `FileService`, `LocationService`).
 
-| ViewModel | Android-Specific Reason |
-|---|---|
-| `AndroidSettingsViewModel` | File I/O via `android.net.Uri` |
-| `AndroidRadioConfigViewModel` | Location permissions, file I/O |
-| `AndroidDebugViewModel` | `Locale`-aware hex formatting |
-| `AndroidMetricsViewModel` | CSV export via `android.net.Uri` |
-| `UIViewModel` | Deep links via `android.net.Uri`, `IMeshService` |
+**The extraction of all feature-specific navigation graphs, background services, and widgets out of `:app` is complete.** The `:app` module now only serves as the root DI assembler and NavHost container.
 
 Extracted to shared `commonMain` (no longer app-only):
+- `SettingsViewModel` → `feature:settings/commonMain`
+- `RadioConfigViewModel` → `feature:settings/commonMain`
+- `DebugViewModel` → `feature:settings/commonMain`
+- `MetricsViewModel` → `feature:node/commonMain`
+- `UIViewModel` → `core:ui/commonMain`
 - `ChannelViewModel` → `feature:settings/commonMain`
-- `NodeMapViewModel` → `feature:map/commonMain`
+- `NodeMapViewModel` → `feature:map/commonMain` (Shared logic for node-specific maps)
+- `BaseMapViewModel` → `feature:map/commonMain` (Core contract for all maps)
+- `TracerouteOverlay` → `core:model/commonMain` (Pure data class for traceroute route segments; extracted from `feature:map` for cross-module reuse)
+- `GeoConstants` → `core:model/commonMain` (Centralized `DEG_D`, `HEADING_DEG`, `EARTH_RADIUS_METERS` constants; eliminates 7 duplicate private constants)
+
+Extracted to core KMP modules:
+- Android Services, WorkManager Workers, and BroadcastReceivers → `core:service/androidMain`
+- USB/Serial radio connections → `core:network/androidMain`
+- TCP radio connections, BLE radio connections (`BleRadioTransport`), and mDNS/NSD Service Discovery → `core:network/commonMain` (with Android `NsdManager` and Desktop `JmDNS` implementations)
+
+Remaining to be extracted from `:app` or unified in `commonMain`:
+- `MapViewModel` (Unify Google/F-Droid flavors into a single `commonMain` class consuming a `MapConfigProvider` interface. `MapViewProvider` interface simplified — track rendering and traceroute rendering extracted to dedicated provider contracts)
 
 ## Prerelease Dependencies
 
 | Dependency | Version | Why |
 |---|---|---|
-| Compose Multiplatform | `1.11.0-alpha04` | Required for JetBrains Adaptive `1.3.0-alpha06` |
-| Koin | `4.2.0-RC2` | Nav3 + K2 compiler plugin support |
-| JetBrains Lifecycle | `2.10.0-beta01` | Multiplatform ViewModel/lifecycle |
-| JetBrains Navigation 3 | `1.1.0-alpha04` | Multiplatform navigation |
-| Nordic BLE | `2.0.0-alpha16` | Behind abstraction boundary |
+| Compose Multiplatform | `1.11.0-beta02` | Required for JetBrains Adaptive `1.3.0-alpha06` and Material 3 `1.11.0-alpha06` |
+| Compose Multiplatform Material 3 | `1.11.0-alpha06` | Material 3 components including `NavigationSuiteScaffold` |
+| Koin | `4.2.1` | Nav3 + K2 compiler plugin support |
+| JetBrains Lifecycle | `2.11.0-alpha03` | Multiplatform ViewModel/lifecycle; includes `lifecycle-viewmodel-navigation3` for entry-scoped ViewModels |
+| JetBrains Navigation 3 | `1.1.0-rc01` | Multiplatform navigation with Scene architecture, `NavEntry.metadata`, transition specs |
+| JetBrains Navigation Event | `1.1.0-alpha01` | KMP `NavigationBackHandler` for predictive back |
+| JetBrains Material 3 Adaptive | `1.3.0-alpha06` | `ListDetailPaneScaffold`, `ThreePaneScaffold`, Large/XL breakpoints |
+| Kable BLE | `0.42.0` | Provides fully multiplatform BLE support |
 
 **Policy:** Stable by default. RC when it unlocks KMP functionality. Alpha only behind hard abstraction seams. Do not downgrade CMP or Koin — they enable critical KMP features.
 
@@ -153,5 +174,5 @@ Extracted to shared `commonMain` (no longer app-only):
 
 - Roadmap: [`docs/roadmap.md`](./roadmap.md)
 - Agent guide: [`AGENTS.md`](../AGENTS.md)
-- Playbooks: [`docs/agent-playbooks/`](./agent-playbooks/)
+- Agent skills: [`.skills/`](../.skills/)
 - Decision records: [`docs/decisions/`](./decisions/)

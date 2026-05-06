@@ -6,10 +6,10 @@ The `:app` module is the entry point for the Meshtastic Android application. It 
 ## Key Components
 
 ### 1. `MainActivity` & `Main.kt`
-The single Activity of the application. It hosts the `NavHost` and manages the root UI structure (Navigation Bar, Rail, etc.).
+The single Activity of the application. It hosts the shared `MeshtasticNavDisplay` navigation shell and manages the root UI structure (Navigation Bar, Rail, etc.).
 
 ### 2. `MeshService`
-The core background service that manages long-running communication with the mesh radio. It runs as a **Foreground Service** to ensure reliable communication even when the app is in the background.
+The core background service that manages long-running communication with the mesh radio. While it is declared in the `:app` manifest for system visibility, its implementation resides in the `:core:service` module. It runs as a **Foreground Service** to ensure reliable communication even when the app is in the background.
 
 ### 3. Koin Application
 `MeshUtilApplication` is the Koin entry point, providing the global dependency injection container.
@@ -42,6 +42,7 @@ graph TB
   :app -.-> :core:resources
   :app -.-> :core:ui
   :app -.-> :core:barcode
+  :app -.-> :core:takserver
   :app -.-> :feature:intro
   :app -.-> :feature:messaging
   :app -.-> :feature:connections
@@ -49,6 +50,8 @@ graph TB
   :app -.-> :feature:node
   :app -.-> :feature:settings
   :app -.-> :feature:firmware
+  :app -.-> :feature:wifi-provision
+  :app -.-> :feature:widget
 
 classDef android-application fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000;
 classDef android-application-compose fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000;
@@ -58,6 +61,8 @@ classDef android-library fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
 classDef android-library-compose fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
 classDef android-test fill:#A0C4FF,stroke:#000,stroke-width:2px,color:#000;
 classDef jvm-library fill:#BDB2FF,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-feature fill:#FFD6A5,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-library-compose fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
 classDef kmp-library fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
 classDef unknown fill:#FFADAD,stroke:#000,stroke-width:2px,color:#000;
 

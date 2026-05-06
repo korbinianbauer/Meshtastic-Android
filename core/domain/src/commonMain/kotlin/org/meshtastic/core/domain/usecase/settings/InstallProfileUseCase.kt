@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +36,7 @@ open class InstallProfileUseCase constructor(private val radioController: RadioC
      * @param profile The device profile to install.
      * @param currentUser The current user configuration of the destination node (to preserve names if not in profile).
      */
-    suspend operator fun invoke(destNum: Int, profile: DeviceProfile, currentUser: User?) {
+    open suspend operator fun invoke(destNum: Int, profile: DeviceProfile, currentUser: User?) {
         radioController.beginEditSettings(destNum)
 
         installOwner(destNum, profile, currentUser)

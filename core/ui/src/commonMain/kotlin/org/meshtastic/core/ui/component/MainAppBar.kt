@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,27 +19,42 @@ package org.meshtastic.core.ui.component
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
+import org.koin.compose.koinInject
 import org.meshtastic.core.model.Node
 import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.ic_meshtastic
 import org.meshtastic.core.resources.navigate_back
+import org.meshtastic.core.ui.icon.ArrowBack
+import org.meshtastic.core.ui.icon.MeshtasticIcons
+import org.meshtastic.core.ui.util.LocalEventBranding
+import org.meshtastic.core.ui.util.SnackbarManager
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MainAppBar(
     modifier: Modifier = Modifier,
@@ -51,45 +66,70 @@ fun MainAppBar(
     onNavigateUp: () -> Unit,
     actions: @Composable () -> Unit,
     onClickChip: (Node) -> Unit,
+    brandingContent: @Composable () -> Unit = { EventAwareBranding() },
 ) {
     TopAppBar(
         title = {
-            androidx.compose.foundation.layout.Column {
+            Text(
+                text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleLarge,
+            )
+        },
+        subtitle = {
+            subtitle?.let {
                 Text(
-                    text = title,
+                    text = it,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                subtitle?.let {
-                    Text(
-                        text = it,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
             }
         },
         modifier = modifier,
-        navigationIcon =
         if (canNavigateUp) {
             {
                 IconButton(onClick = onNavigateUp) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        imageVector = MeshtasticIcons.ArrowBack,
                         contentDescription = stringResource(Res.string.navigate_back),
                     )
                 }
             }
         } else {
-            { Icon(imageVector = vectorResource(Res.drawable.ic_meshtastic), contentDescription = null) }
+            { brandingContent() }
         },
         actions = {
             TopBarActions(ourNode = ourNode, showNodeChip = showNodeChip, actions = actions, onClickChip = onClickChip)
         },
     )
+}
+
+/** Reads [LocalEventBranding] to show event artwork (with tap → snackbar), or the default Meshtastic logo. */
+@Composable
+private fun EventAwareBranding() {
+    val eventEdition = LocalEventBranding.current
+    val iconRes = eventEdition?.iconRes
+    if (iconRes != null) {
+        val scope = rememberCoroutineScope()
+        val snackbarManager = koinInject<SnackbarManager>()
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = eventEdition.name,
+            contentScale = ContentScale.Fit,
+            modifier =
+            Modifier.size(32.dp).clip(CircleShape).clickable(role = Role.Button) {
+                scope.launch {
+                    val message = getString(eventEdition.welcomeMessageRes)
+                    snackbarManager.showSnackbar(message)
+                }
+            },
+        )
+    } else {
+        Icon(imageVector = vectorResource(Res.drawable.ic_meshtastic), contentDescription = null)
+    }
 }
 
 @Composable

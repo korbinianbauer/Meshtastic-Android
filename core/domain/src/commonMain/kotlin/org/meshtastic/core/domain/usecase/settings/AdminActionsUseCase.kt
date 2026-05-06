@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,7 +38,7 @@ constructor(
      * @param destNum The node number to reboot.
      * @return The packet ID of the request.
      */
-    suspend fun reboot(destNum: Int): Int {
+    open suspend fun reboot(destNum: Int): Int {
         val packetId = radioController.getPacketId()
         radioController.reboot(destNum, packetId)
         return packetId
@@ -50,7 +50,7 @@ constructor(
      * @param destNum The node number to shut down.
      * @return The packet ID of the request.
      */
-    suspend fun shutdown(destNum: Int): Int {
+    open suspend fun shutdown(destNum: Int): Int {
         val packetId = radioController.getPacketId()
         radioController.shutdown(destNum, packetId)
         return packetId
@@ -63,7 +63,7 @@ constructor(
      * @param isLocal Whether the reset is being performed on the locally connected node.
      * @return The packet ID of the request.
      */
-    suspend fun factoryReset(destNum: Int, isLocal: Boolean): Int {
+    open suspend fun factoryReset(destNum: Int, isLocal: Boolean): Int {
         val packetId = radioController.getPacketId()
         radioController.factoryReset(destNum, packetId)
 
@@ -83,7 +83,7 @@ constructor(
      * @param isLocal Whether the reset is being performed on the locally connected node.
      * @return The packet ID of the request.
      */
-    suspend fun nodedbReset(destNum: Int, preserveFavorites: Boolean, isLocal: Boolean): Int {
+    open suspend fun nodedbReset(destNum: Int, preserveFavorites: Boolean, isLocal: Boolean): Int {
         val packetId = radioController.getPacketId()
         radioController.nodedbReset(destNum, packetId, preserveFavorites)
 

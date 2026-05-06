@@ -37,27 +37,30 @@ import org.meshtastic.core.database.di.CoreDatabaseAndroidModule
 import org.meshtastic.core.database.di.CoreDatabaseModule
 import org.meshtastic.core.datastore.di.CoreDatastoreAndroidModule
 import org.meshtastic.core.datastore.di.CoreDatastoreModule
-import org.meshtastic.core.di.di.CoreDiModule
+import org.meshtastic.core.network.di.CoreNetworkAndroidModule
 import org.meshtastic.core.network.di.CoreNetworkModule
+import org.meshtastic.core.network.repository.ProbeTableProvider
 import org.meshtastic.core.prefs.di.CorePrefsAndroidModule
 import org.meshtastic.core.prefs.di.CorePrefsModule
 import org.meshtastic.core.service.di.CoreServiceAndroidModule
 import org.meshtastic.core.service.di.CoreServiceModule
+import org.meshtastic.core.takserver.di.CoreTakServerModule
 import org.meshtastic.core.ui.di.CoreUiModule
 import org.meshtastic.feature.connections.di.FeatureConnectionsModule
-import org.meshtastic.feature.connections.repository.ProbeTableProvider
 import org.meshtastic.feature.firmware.di.FeatureFirmwareModule
 import org.meshtastic.feature.intro.di.FeatureIntroModule
 import org.meshtastic.feature.map.di.FeatureMapModule
 import org.meshtastic.feature.messaging.di.FeatureMessagingModule
 import org.meshtastic.feature.node.di.FeatureNodeModule
 import org.meshtastic.feature.settings.di.FeatureSettingsModule
+import org.meshtastic.feature.widget.di.FeatureWidgetModule
+import org.meshtastic.feature.wifiprovision.di.FeatureWifiProvisionModule
 
 @Module(
     includes =
     [
         org.meshtastic.app.MainKoinModule::class,
-        CoreDiModule::class,
+        org.meshtastic.core.di.di.CoreDiModule::class,
         CoreCommonModule::class,
         CoreBleModule::class,
         CoreBleAndroidModule::class,
@@ -74,6 +77,8 @@ import org.meshtastic.feature.settings.di.FeatureSettingsModule
         CoreServiceModule::class,
         CoreServiceAndroidModule::class,
         CoreNetworkModule::class,
+        CoreNetworkAndroidModule::class,
+        CoreTakServerModule::class,
         CoreUiModule::class,
         FeatureNodeModule::class,
         FeatureMessagingModule::class,
@@ -82,6 +87,8 @@ import org.meshtastic.feature.settings.di.FeatureSettingsModule
         FeatureSettingsModule::class,
         FeatureFirmwareModule::class,
         FeatureIntroModule::class,
+        FeatureWidgetModule::class,
+        FeatureWifiProvisionModule::class,
         NetworkModule::class,
         FlavorModule::class,
     ],

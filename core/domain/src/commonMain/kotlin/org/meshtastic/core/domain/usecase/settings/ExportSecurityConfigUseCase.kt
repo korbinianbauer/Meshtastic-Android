@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ open class ExportSecurityConfigUseCase {
      * @param securityConfig The security configuration to export.
      * @return A [Result] indicating success or failure.
      */
-    operator fun invoke(sink: BufferedSink, securityConfig: Config.SecurityConfig): Result<Unit> = runCatching {
+    open operator fun invoke(sink: BufferedSink, securityConfig: Config.SecurityConfig): Result<Unit> = runCatching {
         // Convert ByteStrings to Base64 strings
         val publicKeyBase64 = securityConfig.public_key.base64()
         val privateKeyBase64 = securityConfig.private_key.base64()

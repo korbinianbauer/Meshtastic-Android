@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,11 +15,11 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import com.mikepenz.aboutlibraries.plugin.DuplicateMode
-import com.mikepenz.aboutlibraries.plugin.DuplicateRule
-import io.gitlab.arturbosch.detekt.Detekt
+import dev.detekt.gradle.Detekt
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.meshtastic.buildlogic.configureGraphTasks
+import org.meshtastic.buildlogic.resolveVersionInfo
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -28,12 +28,78 @@ plugins {
     alias(libs.plugins.meshtastic.detekt)
     alias(libs.plugins.meshtastic.spotless)
     alias(libs.plugins.meshtastic.koin)
-    alias(libs.plugins.aboutlibraries)
+    id("meshtastic.kover")
+    id("meshtastic.aboutlibraries")
 }
 
+configureGraphTasks()
+
+// ── Version resolution (shared with app/build.gradle.kts via build-logic) ────
+val versionInfo = resolveVersionInfo()
+val resolvedIsDebug: Boolean = providers.gradleProperty("desktop.release").map { !it.toBoolean() }.getOrElse(true)
+
+// ── Generate DesktopBuildConfig ──────────────────────────────────────────────
+// Mirrors AGP's BuildConfig for Android so the desktop runtime has access to the
+// same version metadata without hardcoding.
+// Uses an abstract task with typed properties so the configuration cache can
+// serialise it without capturing build-script object references.
+@CacheableTask
+abstract class GenerateBuildConfigTask : DefaultTask() {
+    @get:Input abstract val content: Property<String>
+
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val dir = outputDir.get().asFile
+        dir.mkdirs()
+        dir.resolve("DesktopBuildConfig.kt").writeText(content.get())
+    }
+}
+
+val buildConfigOutputDir = layout.buildDirectory.dir("generated/buildconfig")
+
+val generateBuildConfig =
+    tasks.register<GenerateBuildConfigTask>("generateDesktopBuildConfig") {
+        content.set(
+            """
+            |package org.meshtastic.desktop
+            |
+            |/**
+            | * Auto-generated build configuration for Meshtastic Desktop.
+            | * Do not edit — values are derived from config.properties and git at build time.
+            | */
+            |object DesktopBuildConfig {
+            |    const val VERSION_CODE: Int = ${versionInfo.versionCode}
+            |    const val VERSION_NAME: String = "${versionInfo.versionName}"
+            |    const val IS_DEBUG: Boolean = $resolvedIsDebug
+            |    const val APPLICATION_ID: String = "org.meshtastic.desktop"
+            |    const val MIN_FW_VERSION: String = "${versionInfo.minFwVersion}"
+            |    const val ABS_MIN_FW_VERSION: String = "${versionInfo.absMinFwVersion}"
+            |}
+            """
+                .trimMargin(),
+        )
+        outputDir.set(buildConfigOutputDir.map { it.dir("org/meshtastic/desktop") })
+    }
+
+sourceSets.main { kotlin.srcDir(generateBuildConfig.map { buildConfigOutputDir }) }
+
+// ── ProGuard configuration ───────────────────────────────────────────────────
+// compose-jb's standalone ProGuard 7.7 task does NOT auto-include
+// `META-INF/proguard/*.pro` consumer rules from dependency jars (only R8 on
+// Android does). We therefore inline every keep rule we need into the two
+// static .pro files referenced below.
+
 kotlin {
-    jvmToolchain(17)
-    compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    jvmToolchain {
+        languageVersion.set(JavaLanguageVersion.of(21))
+        vendor.set(JvmVendorSpec.JETBRAINS)
+    }
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+        freeCompilerArgs.add("-jvm-default=no-compatibility")
+    }
 }
 
 // Exclude generated Compose resource files from detekt analysis
@@ -43,21 +109,33 @@ compose.desktop {
     application {
         mainClass = "org.meshtastic.desktop.MainKt"
 
+        val desktopJvmArgs =
+            listOf(
+                "-Xmx2G",
+                "-Dapple.awt.application.name=Meshtastic Desktop",
+                "-Dcom.apple.mrj.application.apple.menu.about.name=Meshtastic Desktop",
+                "-Dcom.apple.bundle.identifier=org.meshtastic.desktop",
+            )
+        jvmArgs(*desktopJvmArgs.toTypedArray())
+
         buildTypes.release.proguard {
-            // Note: Enabling ProGuard will reduce final distribution size significantly,
-            // but will require thorough testing of serialization, reflection (Koin), and JNI (SQLite).
-            // Recommend enabling when ready: isEnabled.set(true)
-            isEnabled.set(false)
-            configurationFiles.from(project.file("proguard-rules.pro"))
+            isEnabled.set(true)
+            obfuscate.set(false) // Open-source project — obfuscation adds no value
+            optimize.set(true)
+            configurationFiles.from(
+                rootProject.file("config/proguard/shared-rules.pro"),
+                project.file("proguard-rules.pro"),
+            )
         }
 
         nativeDistributions {
-            packageName = "Meshtastic"
+            packageName = "Meshtastic Desktop"
 
             // Ensure critical JVM modules are included in the custom JRE bundled with the app.
             // jdeps might miss some of these if they are loaded via reflection or JNI.
             modules(
                 "java.net.http", // Ktor Java client
+                "jdk.accessibility", // Java Access Bridge for screen readers (JAWS, NVDA, VoiceOver)
                 "jdk.crypto.ec", // Required for SSL/TLS HTTPS requests
                 "jdk.unsupported", // sun.misc.Unsafe used by Coroutines & Okio
                 "java.sql", // Sometimes required by SQLite JNI
@@ -66,47 +144,87 @@ compose.desktop {
 
             // Default JVM arguments for the packaged application
             // Increase max heap size to prevent OOM issues on complex maps/data
-            jvmArgs("-Xmx2G")
+            jvmArgs(*desktopJvmArgs.toTypedArray())
 
             // App Icon & OS Specific Configurations
             macOS {
                 iconFile.set(project.file("src/main/resources/icon.icns"))
-                // TODO: To prepare for real distribution on macOS, you'll need to sign and notarize.
-                // You can inject these from CI environment variables.
-                // bundleID = "org.meshtastic.desktop"
-                // sign = true
-                // notarize = true
-                // appleID = System.getenv("APPLE_ID")
-                // appStorePassword = System.getenv("APPLE_APP_SPECIFIC_PASSWORD")
+                minimumSystemVersion = "12.0"
+                bundleID = "org.meshtastic.desktop"
+                appCategory = "public.app-category.utilities"
+                entitlementsFile.set(project.file("entitlements.plist"))
+                infoPlist {
+                    extraKeysRawXml =
+                        """
+                        <key>NSBluetoothAlwaysUsageDescription</key>
+                        <string>Meshtastic uses Bluetooth to communicate with your Meshtastic radio device.</string>
+                        <key>NSLocalNetworkUsageDescription</key>
+                        <string>Meshtastic uses your local network to discover Meshtastic devices connected via WiFi.</string>
+                        <key>NSUserNotificationAlertStyle</key>
+                        <string>alert</string>
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                          <dict>
+                            <key>CFBundleURLName</key>
+                            <string>Meshtastic deep link</string>
+                            <key>CFBundleURLSchemes</key>
+                            <array>
+                              <string>meshtastic</string>
+                            </array>
+                          </dict>
+                        </array>
+                        """
+                            .trimIndent()
+                }
+                // macOS code signing and notarization.
+                // Required CI secrets:
+                //   APPLE_SIGNING_IDENTITY      – e.g. "Developer ID Application: Meshtastic LLC (TEAMID)"
+                //   APPLE_ID                    – Apple ID email used for notarization
+                //   APPLE_APP_SPECIFIC_PASSWORD – App-specific password from appleid.apple.com
+                //   APPLE_TEAM_ID               – 10-character Apple Developer Team ID
+                val signMacOs = providers.environmentVariable("SIGN_MACOS").map { it.toBoolean() }.getOrElse(false)
+                if (signMacOs) {
+                    signing {
+                        sign.set(true)
+                        identity.set(providers.environmentVariable("APPLE_SIGNING_IDENTITY"))
+                    }
+                    notarization {
+                        appleID.set(providers.environmentVariable("APPLE_ID"))
+                        password.set(providers.environmentVariable("APPLE_APP_SPECIFIC_PASSWORD"))
+                        teamID.set(providers.environmentVariable("APPLE_TEAM_ID"))
+                    }
+                }
             }
             windows {
                 iconFile.set(project.file("src/main/resources/icon.ico"))
                 menuGroup = "Meshtastic"
-                // TODO: Must generate and set a consistent UUID for Windows upgrades.
-                // upgradeUuid = "YOUR-UPGRADE-UUID-HERE"
+                shortcut = true
+                menu = true
+                dirChooser = true
+                // Stable UUID ensures MSI upgrades replace the previous installation
+                // rather than installing side-by-side. NEVER change this value.
+                upgradeUuid = "4974EA87-98AA-470E-B590-0BD5CF9FAE8E"
             }
             linux {
                 iconFile.set(project.file("src/main/resources/icon.png"))
                 menuGroup = "Network"
+                debMaintainer = "developers@meshtastic.org"
+                appCategory = "Network"
+                rpmLicenseType = "GPLv3+"
             }
 
             // Define target formats based on the current host OS to avoid configuration errors
             // (e.g., trying to configure Linux AppImage notarization on macOS).
-            val currentOs = System.getProperty("os.name").lowercase()
+            val currentOs = providers.systemProperty("os.name").get().lowercase()
             when {
                 currentOs.contains("mac") -> targetFormats(TargetFormat.Dmg)
                 currentOs.contains("win") -> targetFormats(TargetFormat.Msi, TargetFormat.Exe)
                 else -> targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
             }
 
-            // Read version from project properties (passed by CI) or default to 1.0.0
-            // Native installers require strict numeric semantic versions (X.Y.Z) without suffixes
-            val rawVersion =
-                project.findProperty("android.injected.version.name")?.toString()
-                    ?: project.findProperty("appVersionName")?.toString()
-                    ?: System.getenv("VERSION_NAME")
-                    ?: "1.0.0"
-            val sanitizedVersion = Regex("^\\d+\\.\\d+\\.\\d+").find(rawVersion)?.value ?: "1.0.0"
+            // Reuse the resolved version from the top of this script (mirrors app/build.gradle.kts).
+            // Native installers require strict numeric semantic versions (X.Y.Z) without suffixes.
+            val sanitizedVersion = Regex("^\\d+\\.\\d+\\.\\d+").find(versionInfo.versionName)?.value ?: "1.0.0"
             packageVersion = sanitizedVersion
 
             description = "Meshtastic Desktop Application"
@@ -119,11 +237,17 @@ dependencies {
     implementation(libs.aboutlibraries.core)
     implementation(libs.aboutlibraries.compose.m3)
 
+    // Coil image loading (network + SVG decoding for device hardware images)
+    implementation(libs.coil)
+    implementation(libs.coil.network.ktor3)
+    implementation(libs.coil.svg)
+
     // Core KMP modules (JVM variants)
     implementation(projects.core.common)
     implementation(projects.core.di)
     implementation(projects.core.model)
     implementation(projects.core.navigation)
+    implementation(libs.jetbrains.lifecycle.viewmodel.navigation3)
     implementation(projects.core.repository)
     implementation(projects.core.domain)
     implementation(projects.core.data)
@@ -131,6 +255,7 @@ dependencies {
     implementation(projects.core.datastore)
     implementation(projects.core.prefs)
     implementation(projects.core.network)
+    implementation(projects.core.takserver)
     implementation(projects.core.resources)
     implementation(projects.core.service)
     implementation(projects.core.ui)
@@ -143,11 +268,14 @@ dependencies {
     implementation(projects.feature.messaging)
     implementation(projects.feature.connections)
     implementation(projects.feature.map)
+    implementation(projects.feature.firmware)
+    implementation(projects.feature.wifiProvision)
+    implementation(projects.feature.intro)
 
     // Compose Desktop
     implementation(compose.desktop.currentOs)
+    implementation(libs.compose.multiplatform.animation)
     implementation(libs.compose.multiplatform.material3)
-    implementation(libs.compose.multiplatform.materialIconsExtended)
     implementation(libs.compose.multiplatform.runtime)
     implementation(libs.compose.multiplatform.foundation)
     implementation(libs.compose.multiplatform.resources)
@@ -159,8 +287,8 @@ dependencies {
 
     // Navigation 3 (JetBrains fork — multiplatform)
     implementation(libs.jetbrains.navigation3.ui)
-    implementation(libs.jetbrains.lifecycle.viewmodel.compose)
     implementation(libs.jetbrains.lifecycle.viewmodel.navigation3)
+    implementation(libs.jetbrains.lifecycle.viewmodel.compose)
     implementation(libs.jetbrains.lifecycle.runtime.compose)
 
     // Koin DI
@@ -174,9 +302,9 @@ dependencies {
     implementation(libs.okio)
 
     // Ktor HttpClient (Java engine for JVM/Desktop)
-    implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.java)
     implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.client.logging)
     implementation(libs.ktor.serialization.kotlinx.json)
 
     implementation(libs.androidx.paging.common)
@@ -187,28 +315,10 @@ dependencies {
     implementation(libs.koin.annotations)
     implementation(libs.kotlinx.collections.immutable)
 
-    testImplementation(libs.junit)
-    testImplementation(libs.koin.test)
-    testImplementation(kotlin("test"))
-}
+    implementation(libs.jna)
 
-aboutLibraries {
-    // Fetch full license text + funding info from GitHub API when on CI with a token
-    val isCi = providers.gradleProperty("ci").map { it.toBoolean() }.getOrElse(false)
-    val ghToken = providers.environmentVariable("GITHUB_TOKEN")
-    collect {
-        fetchRemoteLicense = isCi && ghToken.isPresent
-        fetchRemoteFunding = isCi && ghToken.isPresent
-        if (ghToken.isPresent) {
-            gitHubApiToken = ghToken.get()
-        }
-    }
-    export {
-        excludeFields = listOf("generated")
-        outputFile = file("src/main/resources/aboutlibraries.json")
-    }
-    library {
-        duplicationMode = DuplicateMode.MERGE
-        duplicationRule = DuplicateRule.SIMPLE
-    }
+    testRuntimeOnly(libs.junit.vintage.engine)
+    testImplementation(libs.koin.test)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(kotlin("test"))
 }

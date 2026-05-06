@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@ open class ImportProfileUseCase {
      * @param source The source to read the profile from.
      * @return A [Result] containing the imported [DeviceProfile] or an error.
      */
-    operator fun invoke(source: BufferedSource): Result<DeviceProfile> = runCatching {
+    open operator fun invoke(source: BufferedSource): Result<DeviceProfile> = runCatching {
         val bytes = source.readByteArray()
         DeviceProfile.ADAPTER.decode(bytes)
     }

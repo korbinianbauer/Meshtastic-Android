@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
  */
 package org.meshtastic.core.model.service
 
+import kotlinx.coroutines.CompletableDeferred
 import org.meshtastic.core.model.Node
 import org.meshtastic.proto.SharedContact
 
@@ -32,5 +33,17 @@ sealed class ServiceAction {
 
     data class ImportContact(val contact: SharedContact) : ServiceAction()
 
-    data class SendContact(val contact: SharedContact) : ServiceAction()
+    /**
+     * Sends a shared contact (identity + public key) to the firmware's NodeDB.
+     *
+     * The [result] deferred is completed with `true` when the radio acknowledges the admin packet, or `false` on
+     * timeout/failure. Callers that need to guarantee the contact is stored before sending a subsequent DM should
+     * `await()` this deferred.
+     *
+     * Not a data class: [result] is a [CompletableDeferred] with identity-based equality that would break data class
+     * equals/hashCode/copy semantics.
+     */
+    class SendContact(val contact: SharedContact) : ServiceAction() {
+        val result: CompletableDeferred<Boolean> = CompletableDeferred()
+    }
 }

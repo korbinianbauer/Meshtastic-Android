@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,19 +16,16 @@
  */
 package org.meshtastic.core.repository
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import org.meshtastic.proto.Channel
 import org.meshtastic.proto.Config
+import org.meshtastic.proto.DeviceUIConfig
 import org.meshtastic.proto.LocalConfig
 import org.meshtastic.proto.LocalModuleConfig
 import org.meshtastic.proto.ModuleConfig
 
 /** Interface for handling device and module configuration updates. */
 interface MeshConfigHandler {
-    /** Starts the handler with the given coroutine scope. */
-    fun start(scope: CoroutineScope)
-
     /** Reactive local configuration. */
     val localConfig: StateFlow<LocalConfig>
 
@@ -43,4 +40,10 @@ interface MeshConfigHandler {
 
     /** Handles a received channel configuration. */
     fun handleChannel(channel: Channel)
+
+    /**
+     * Handles the [DeviceUIConfig] received during the config handshake (STATE_SEND_UIDATA). This arrives as the 2nd
+     * packet in every handshake, immediately after my_info.
+     */
+    fun handleDeviceUIConfig(config: DeviceUIConfig)
 }

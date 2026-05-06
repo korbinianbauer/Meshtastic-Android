@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,6 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+@file:Suppress("DEPRECATION") // IMeshService is deprecated but still required for AIDL binding
+
 package org.meshtastic.core.service.testing
 
 import org.meshtastic.core.model.DataPacket
@@ -101,12 +103,15 @@ open class FakeIMeshService : IMeshService.Stub() {
 
     override fun connectionState(): String = "CONNECTED"
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun setDeviceAddress(deviceAddr: String?): Boolean = true
 
     override fun getMyNodeInfo(): MyNodeInfo? = null
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun startFirmwareUpdate() {}
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun getUpdateStatus(): Int = 0
 
     override fun startProvideLocation() {}

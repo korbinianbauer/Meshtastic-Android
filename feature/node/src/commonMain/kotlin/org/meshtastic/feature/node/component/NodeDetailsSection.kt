@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,9 +29,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Notes
-import androidx.compose.material.icons.rounded.Numbers
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -52,10 +49,12 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import org.meshtastic.core.common.util.Base64Factory
+import org.meshtastic.core.common.util.MetricFormatter
 import org.meshtastic.core.model.DataPacket
 import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.util.formatUptime
 import org.meshtastic.core.resources.Res
+import org.meshtastic.core.resources.a11y_label_value
 import org.meshtastic.core.resources.copy
 import org.meshtastic.core.resources.details
 import org.meshtastic.core.resources.encryption_error
@@ -76,14 +75,17 @@ import org.meshtastic.core.resources.uptime
 import org.meshtastic.core.resources.user_id
 import org.meshtastic.core.resources.via_mqtt
 import org.meshtastic.core.ui.icon.ArrowCircleUp
-import org.meshtastic.core.ui.icon.ChannelUtilization
-import org.meshtastic.core.ui.icon.Cloud
+import org.meshtastic.core.ui.icon.DeviceNumbers
 import org.meshtastic.core.ui.icon.History
-import org.meshtastic.core.ui.icon.Hops
+import org.meshtastic.core.ui.icon.HopCount
 import org.meshtastic.core.ui.icon.KeyOff
 import org.meshtastic.core.ui.icon.Lock
 import org.meshtastic.core.ui.icon.MeshtasticIcons
+import org.meshtastic.core.ui.icon.MqttConnected
+import org.meshtastic.core.ui.icon.Notes
 import org.meshtastic.core.ui.icon.Person
+import org.meshtastic.core.ui.icon.Rssi
+import org.meshtastic.core.ui.icon.Snr
 import org.meshtastic.core.ui.icon.Verified
 import org.meshtastic.core.ui.icon.role
 import org.meshtastic.core.ui.util.createClipEntry
@@ -187,7 +189,7 @@ private fun StatusMessageRow(status: String) {
     InfoItem(
         label = stringResource(Res.string.status_message),
         value = status,
-        icon = Icons.AutoMirrored.Rounded.Notes,
+        icon = MeshtasticIcons.Notes,
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -198,13 +200,13 @@ private fun NodeIdentificationRow(node: Node) {
         InfoItem(
             label = stringResource(Res.string.node_id),
             value = DataPacket.nodeNumToDefaultId(node.num),
-            icon = Icons.Rounded.Numbers,
+            icon = MeshtasticIcons.DeviceNumbers,
             modifier = Modifier.weight(1f),
         )
         InfoItem(
             label = stringResource(Res.string.node_number),
             value = node.num.toUInt().toString(),
-            icon = Icons.Rounded.Numbers,
+            icon = MeshtasticIcons.DeviceNumbers,
             modifier = Modifier.weight(1f),
         )
     }
@@ -223,7 +225,7 @@ private fun HearsAndHopsRow(node: Node) {
             InfoItem(
                 label = stringResource(Res.string.hops_away),
                 value = node.hopsAway.toString(),
-                icon = MeshtasticIcons.Hops,
+                icon = MeshtasticIcons.HopCount,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -261,8 +263,8 @@ private fun SignalRow(node: Node) {
         if (node.snr != Float.MAX_VALUE) {
             InfoItem(
                 label = stringResource(Res.string.snr),
-                value = "%.1f dB".format(node.snr),
-                icon = MeshtasticIcons.ChannelUtilization,
+                value = MetricFormatter.snr(node.snr),
+                icon = MeshtasticIcons.Snr,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -271,8 +273,8 @@ private fun SignalRow(node: Node) {
         if (node.rssi != Int.MAX_VALUE) {
             InfoItem(
                 label = stringResource(Res.string.rssi),
-                value = "%d dBm".format(node.rssi),
-                icon = MeshtasticIcons.ChannelUtilization,
+                value = MetricFormatter.rssi(node.rssi),
+                icon = MeshtasticIcons.Rssi,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -288,7 +290,7 @@ private fun MqttAndVerificationRow(node: Node) {
             InfoItem(
                 label = stringResource(Res.string.via_mqtt),
                 value = "Yes",
-                icon = MeshtasticIcons.Cloud,
+                icon = MeshtasticIcons.MqttConnected,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -322,6 +324,7 @@ private fun PublicKeyItem(publicKeyBytes: ByteArray) {
         }
     val label = stringResource(Res.string.public_key)
     val copyLabel = stringResource(Res.string.copy)
+    val contentDescriptionText = stringResource(Res.string.a11y_label_value, label, publicKeyBase64)
 
     Column(
         modifier =
@@ -338,7 +341,7 @@ private fun PublicKeyItem(publicKeyBytes: ByteArray) {
                 role = Role.Button,
             )
             .padding(horizontal = 20.dp, vertical = 8.dp)
-            .semantics(mergeDescendants = true) { contentDescription = "$label: $publicKeyBase64" },
+            .semantics(mergeDescendants = true) { contentDescription = contentDescriptionText },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(

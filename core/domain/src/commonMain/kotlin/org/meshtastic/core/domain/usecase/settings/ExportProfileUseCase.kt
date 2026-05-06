@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ open class ExportProfileUseCase {
      * @param profile The device profile to export.
      * @return A [Result] indicating success or failure.
      */
-    operator fun invoke(sink: BufferedSink, profile: DeviceProfile): Result<Unit> = runCatching {
+    open operator fun invoke(sink: BufferedSink, profile: DeviceProfile): Result<Unit> = runCatching {
         sink.write(profile.encode())
         sink.flush()
     }

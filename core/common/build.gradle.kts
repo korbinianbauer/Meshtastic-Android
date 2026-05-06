@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@ plugins {
 kotlin {
     jvm()
 
-    @Suppress("UnstableApiUsage")
     android {
         androidResources.enable = false
         withHostTest { isIncludeAndroidResources = true }
@@ -33,19 +32,15 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(libs.aboutlibraries.core)
-            implementation(libs.aboutlibraries.compose.m3)
-            implementation(libs.javax.inject)
             implementation(libs.kotlinx.atomicfu)
             implementation(libs.kotlinx.coroutines.core)
             api(libs.kotlinx.datetime)
             api(libs.okio)
+            api(libs.uri.kmp)
             implementation(libs.kermit)
         }
-        androidMain.dependencies {
-            api(libs.androidx.core.ktx)
-            api(libs.nordic.common.core)
-        }
+        androidMain.dependencies { api(libs.androidx.core.ktx) }
+
         commonTest.dependencies { implementation(libs.kotlinx.coroutines.test) }
     }
 }

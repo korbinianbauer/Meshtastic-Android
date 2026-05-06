@@ -14,12 +14,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.provider.Property
 import org.gradle.kotlin.dsl.apply
 import org.gradle.kotlin.dsl.dependencies
+import org.koin.compiler.plugin.KoinGradleExtension
 import org.meshtastic.buildlogic.libs
 import org.meshtastic.buildlogic.plugin
 
@@ -28,28 +27,15 @@ class KoinConventionPlugin : Plugin<Project> {
         with(target) {
             apply(plugin = libs.plugin("koin-compiler").get().pluginId)
 
-            // Configure Koin Compiler Plugin (0.4.0+)
-            extensions.configure<Any>("koinCompiler") {
-                val extension = this
-                val clazz = extension.javaClass
-                try {
-                    // Meshtastic heavily utilizes dependency inversion across KMP modules. Koin 0.4.0's A1
-                    // per-module safety checks strictly enforce that all dependencies must be explicitly 
-                    // provided or included locally. This breaks decoupled Clean Architecture designs.
-                    // We disable A1 compile safety globally to properly rely on Koin's A3 full-graph 
-                    // validation which perfectly handles inverted dependencies at the composition root.
-                    try {
-                        clazz.getMethod("setCompileSafety", Boolean::class.java).invoke(extension, false)
-                    } catch (e: Exception) {
-                        val prop = clazz.getMethod("getCompileSafety").invoke(extension)
-                        if (prop is Property<*>) {
-                            @Suppress("UNCHECKED_CAST")
-                            (prop as Property<Boolean>).set(false)
-                        }
-                    }
-                } catch (e: Exception) {
-                    // Ignore gracefully if Koin DSL changes in the future
-                }
+            // Configure Koin K2 Compiler Plugin (0.4.0+)
+            extensions.configure(KoinGradleExtension::class.java) {
+                // Meshtastic uses dependency inversion across KMP modules — interfaces in
+                // commonMain, implementations wired at the composition root. Koin's compileSafety
+                // flag enables A1 per-module checks that treat every module as self-contained,
+                // which breaks this pattern. There is no separate flag for A3 full-graph
+                // validation. Until Koin exposes granular safety levels we keep this disabled;
+                // runtime graph verification is handled by KoinVerificationTest instead.
+                compileSafety.set(false)
             }
 
             val koinAnnotations = libs.findLibrary("koin-annotations").get()

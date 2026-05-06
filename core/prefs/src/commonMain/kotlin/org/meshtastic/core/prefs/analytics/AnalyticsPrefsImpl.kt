@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,8 +44,8 @@ class AnalyticsPrefsImpl(
 
     override val analyticsAllowed: StateFlow<Boolean> =
         analyticsDataStore.data
-            .map { it[KEY_ANALYTICS_ALLOWED_PREF] ?: false }
-            .stateIn(scope, SharingStarted.Eagerly, false)
+            .map { it[KEY_ANALYTICS_ALLOWED_PREF] ?: true }
+            .stateIn(scope, SharingStarted.Eagerly, true)
 
     override fun setAnalyticsAllowed(allowed: Boolean) {
         scope.launch { analyticsDataStore.edit { prefs -> prefs[KEY_ANALYTICS_ALLOWED_PREF] = allowed } }

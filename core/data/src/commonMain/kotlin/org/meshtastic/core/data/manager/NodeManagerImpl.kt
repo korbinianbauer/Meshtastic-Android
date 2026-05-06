@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,11 +21,10 @@ import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.update
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import okio.ByteString
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import org.meshtastic.core.common.util.handledLaunch
 import org.meshtastic.core.model.DataPacket
@@ -37,11 +36,16 @@ import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.NodeInfo
 import org.meshtastic.core.model.Position
 import org.meshtastic.core.model.util.NodeIdLookup
-import org.meshtastic.core.repository.MeshServiceNotifications
 import org.meshtastic.core.repository.NodeManager
 import org.meshtastic.core.repository.NodeRepository
+import org.meshtastic.core.repository.Notification
+import org.meshtastic.core.repository.NotificationManager
 import org.meshtastic.core.repository.ServiceBroadcasts
+import org.meshtastic.core.resources.Res
+import org.meshtastic.core.resources.getStringSuspend
+import org.meshtastic.core.resources.new_node_seen
 import org.meshtastic.proto.DeviceMetadata
+import org.meshtastic.proto.FirmwareEdition
 import org.meshtastic.proto.HardwareModel
 import org.meshtastic.proto.Paxcount
 import org.meshtastic.proto.StatusMessage
@@ -56,9 +60,9 @@ import org.meshtastic.proto.Position as ProtoPosition
 class NodeManagerImpl(
     private val nodeRepository: NodeRepository,
     private val serviceBroadcasts: ServiceBroadcasts,
-    private val serviceNotifications: MeshServiceNotifications,
+    private val notificationManager: NotificationManager,
+    @Named("ServiceScope") private val scope: CoroutineScope,
 ) : NodeManager {
-    private var scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _nodeDBbyNodeNum = atomic(persistentMapOf<Int, Node>())
     private val _nodeDBbyID = atomic(persistentMapOf<String, Node>())
@@ -80,10 +84,16 @@ class NodeManagerImpl(
         allowNodeDbWrites.value = allowed
     }
 
-    override var myNodeNum: Int? = null
+    override val myNodeNum = MutableStateFlow<Int?>(null)
 
-    override fun start(scope: CoroutineScope) {
-        this.scope = scope
+    override fun setMyNodeNum(num: Int?) {
+        myNodeNum.value = num
+    }
+
+    override val firmwareEdition = MutableStateFlow<FirmwareEdition?>(null)
+
+    override fun setFirmwareEdition(edition: FirmwareEdition?) {
+        firmwareEdition.value = edition
     }
 
     companion object {
@@ -97,7 +107,9 @@ class NodeManagerImpl(
             val byId = mutableMapOf<String, Node>()
             nodes.values.forEach { byId[it.user.id] = it }
             _nodeDBbyID.value = persistentMapOf<String, Node>().putAll(byId)
-            myNodeNum = nodeRepository.myNodeInfo.value?.myNodeNum
+            if (myNodeNum.value == null) {
+                myNodeNum.value = nodeRepository.myNodeInfo.value?.myNodeNum
+            }
         }
     }
 
@@ -106,7 +118,8 @@ class NodeManagerImpl(
         _nodeDBbyID.value = persistentMapOf()
         isNodeDbReady.value = false
         allowNodeDbWrites.value = false
-        myNodeNum = null
+        myNodeNum.value = null
+        firmwareEdition.value = null
     }
 
     override fun getMyNodeInfo(): MyNodeInfo? {
@@ -131,7 +144,7 @@ class NodeManagerImpl(
     }
 
     override fun getMyId(): String {
-        val num = myNodeNum ?: nodeRepository.myNodeInfo.value?.myNodeNum ?: return ""
+        val num = myNodeNum.value ?: nodeRepository.myNodeInfo.value?.myNodeNum ?: return ""
         return _nodeDBbyNodeNum.value[num]?.user?.id ?: ""
     }
 
@@ -162,19 +175,27 @@ class NodeManagerImpl(
         }
 
     override fun updateNode(nodeNum: Int, withBroadcast: Boolean, channel: Int, transform: (Node) -> Node) {
-        val next = transform(_nodeDBbyNodeNum.value[nodeNum] ?: getOrCreateNode(nodeNum, channel))
-
-        _nodeDBbyNodeNum.update { it.put(nodeNum, next) }
-        if (next.user.id.isNotEmpty()) {
-            _nodeDBbyID.update { it.put(next.user.id, next) }
+        // Perform read + transform inside update{} to ensure atomicity.
+        // Without this, concurrent calls for the same nodeNum could read the same snapshot
+        // and the last writer would silently overwrite the other's changes.
+        var next: Node? = null
+        _nodeDBbyNodeNum.update { map ->
+            val current = map[nodeNum] ?: getOrCreateNode(nodeNum, channel)
+            val transformed = transform(current)
+            next = transformed
+            map.put(nodeNum, transformed)
+        }
+        val result = next ?: return
+        if (result.user.id.isNotEmpty()) {
+            _nodeDBbyID.update { it.put(result.user.id, result) }
         }
 
-        if (next.user.id.isNotEmpty() && isNodeDbReady.value) {
-            scope.handledLaunch { nodeRepository.upsert(next) }
+        if (result.user.id.isNotEmpty() && isNodeDbReady.value) {
+            scope.handledLaunch { nodeRepository.upsert(result) }
         }
 
         if (withBroadcast) {
-            serviceBroadcasts.broadcastNodeChange(next)
+            serviceBroadcasts.broadcastNodeChange(result)
         }
     }
 
@@ -189,10 +210,23 @@ class NodeManagerImpl(
                 } else {
                     val keyMatch = !node.hasPKC || node.user.public_key == p.public_key
                     val newUser = if (keyMatch) p else p.copy(public_key = ByteString.EMPTY)
-                    node.copy(user = newUser, channel = channel, manuallyVerified = manuallyVerified)
+                    node.copy(
+                        user = newUser,
+                        publicKey = newUser.public_key,
+                        channel = channel,
+                        manuallyVerified = manuallyVerified,
+                    )
                 }
             if (newNode && !shouldPreserve) {
-                serviceNotifications.showNewNodeSeenNotification(next)
+                scope.handledLaunch {
+                    notificationManager.dispatch(
+                        Notification(
+                            title = getStringSuspend(Res.string.new_node_seen, next.user.short_name),
+                            message = next.user.long_name,
+                            category = Notification.Category.NodeEvent,
+                        ),
+                    )
+                }
             }
             next
         }
@@ -261,10 +295,10 @@ class NodeManagerImpl(
                 } else {
                     var newUser =
                         user.let { if (it.is_licensed == true) it.copy(public_key = ByteString.EMPTY) else it }
-                    if (info.via_mqtt) {
+                    if (info.via_mqtt && !newUser.long_name.endsWith(" (MQTT)")) {
                         newUser = newUser.copy(long_name = "${newUser.long_name} (MQTT)")
                     }
-                    next = next.copy(user = newUser)
+                    next = next.copy(user = newUser, publicKey = newUser.public_key)
                 }
             }
             val position = info.position

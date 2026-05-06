@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,15 +17,15 @@
 package org.meshtastic.core.data.manager
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.update
+import kotlinx.collections.immutable.persistentMapOf
 import org.koin.core.annotation.Single
 import org.meshtastic.core.common.util.NumberFormatter
 import org.meshtastic.core.common.util.nowMillis
-import org.meshtastic.core.repository.CommandSender
 import org.meshtastic.core.repository.NeighborInfoHandler
 import org.meshtastic.core.repository.NodeManager
+import org.meshtastic.core.repository.NodeRepository
 import org.meshtastic.core.repository.ServiceBroadcasts
 import org.meshtastic.core.repository.ServiceRepository
 import org.meshtastic.proto.MeshPacket
@@ -35,13 +35,16 @@ import org.meshtastic.proto.NeighborInfo
 class NeighborInfoHandlerImpl(
     private val nodeManager: NodeManager,
     private val serviceRepository: ServiceRepository,
-    private val commandSender: CommandSender,
     private val serviceBroadcasts: ServiceBroadcasts,
+    private val nodeRepository: NodeRepository,
 ) : NeighborInfoHandler {
-    private var scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    override fun start(scope: CoroutineScope) {
-        this.scope = scope
+    private val startTimes = atomic(persistentMapOf<Int, Long>())
+
+    override var lastNeighborInfo: NeighborInfo? = null
+
+    override fun recordStartTime(requestId: Int) {
+        startTimes.update { it.put(requestId, nowMillis) }
     }
 
     override fun handleNeighborInfo(packet: MeshPacket) {
@@ -50,8 +53,8 @@ class NeighborInfoHandlerImpl(
 
         // Store the last neighbor info from our connected radio
         val from = packet.from
-        if (from == nodeManager.myNodeNum) {
-            commandSender.lastNeighborInfo = ni
+        if (from == nodeManager.myNodeNum.value) {
+            lastNeighborInfo = ni
             Logger.d { "Stored last neighbor info from connected radio" }
         }
 
@@ -60,16 +63,18 @@ class NeighborInfoHandlerImpl(
 
         // Format for UI response
         val requestId = packet.decoded?.request_id ?: 0
-        val start = commandSender.neighborInfoStartTimes.remove(requestId)
+        val start = startTimes.value[requestId]
+        startTimes.update { it.remove(requestId) }
 
         val neighbors =
             ni.neighbors.joinToString("\n") { n ->
-                val node = nodeManager.nodeDBbyNodeNum[n.node_id]
-                val name = node?.let { "${it.user.long_name} (${it.user.short_name})" } ?: "Unknown"
+                val user = nodeRepository.getUser(n.node_id)
+                val name = "${user.long_name} (${user.short_name})"
                 "• $name (SNR: ${n.snr})"
             }
 
-        val formatted = "Neighbors of ${nodeManager.nodeDBbyNodeNum[from]?.user?.long_name ?: "Unknown"}:\n$neighbors"
+        val fromUser = nodeRepository.getUser(from)
+        val formatted = "Neighbors of ${fromUser.long_name}:\n$neighbors"
 
         val responseText =
             if (start != null) {

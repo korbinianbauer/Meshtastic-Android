@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,15 +16,14 @@
  */
 package org.meshtastic.core.database
 
-import androidx.room.AutoMigration
-import androidx.room.Database
-import androidx.room.DeleteColumn
-import androidx.room.DeleteTable
-import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
-import androidx.room.migration.AutoMigrationSpec
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
-import kotlinx.coroutines.Dispatchers
+import androidx.room3.AutoMigration
+import androidx.room3.Database
+import androidx.room3.DeleteColumn
+import androidx.room3.DeleteTable
+import androidx.room3.RoomDatabase
+import androidx.room3.TypeConverters
+import androidx.room3.migration.AutoMigrationSpec
+import org.meshtastic.core.common.util.ioDispatcher
 import org.meshtastic.core.database.dao.DeviceHardwareDao
 import org.meshtastic.core.database.dao.FirmwareReleaseDao
 import org.meshtastic.core.database.dao.MeshLogDao
@@ -95,12 +94,14 @@ import org.meshtastic.core.database.entity.TracerouteNodePositionEntity
         AutoMigration(from = 34, to = 35, spec = AutoMigration34to35::class),
         AutoMigration(from = 35, to = 36),
         AutoMigration(from = 36, to = 37),
+        AutoMigration(from = 37, to = 38),
     ],
-    version = 37,
+    version = 38,
     exportSchema = true,
 )
-@androidx.room.ConstructedBy(MeshtasticDatabaseConstructor::class)
+@androidx.room3.ConstructedBy(MeshtasticDatabaseConstructor::class)
 @TypeConverters(Converters::class)
+@androidx.room3.DaoReturnTypeConverters(androidx.room3.paging.PagingSourceDaoReturnTypeConverter::class)
 abstract class MeshtasticDatabase : RoomDatabase() {
     abstract fun nodeInfoDao(): NodeInfoDao
 
@@ -119,16 +120,15 @@ abstract class MeshtasticDatabase : RoomDatabase() {
     companion object {
         /** Configures a [RoomDatabase.Builder] with standard settings for this project. */
         fun <T : RoomDatabase> RoomDatabase.Builder<T>.configureCommon(): RoomDatabase.Builder<T> =
-            this.fallbackToDestructiveMigration(dropAllTables = false)
-                .setDriver(BundledSQLiteDriver())
-                .setQueryCoroutineContext(Dispatchers.IO)
+            this.fallbackToDestructiveMigration(dropAllTables = false).setQueryCoroutineContext(ioDispatcher)
     }
 }
 
-@DeleteTable.Entries(DeleteTable(tableName = "NodeInfo"), DeleteTable(tableName = "MyNodeInfo"))
+@DeleteTable(tableName = "NodeInfo")
+@DeleteTable(tableName = "MyNodeInfo")
 class AutoMigration12to13 : AutoMigrationSpec
 
-@DeleteColumn.Entries(DeleteColumn(tableName = "packet", columnName = "reply_id"))
+@DeleteColumn(tableName = "packet", columnName = "reply_id")
 class AutoMigration29to30 : AutoMigrationSpec
 
 @DeleteColumn(tableName = "packet", columnName = "retry_count")

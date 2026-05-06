@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,7 +22,7 @@ import org.meshtastic.core.repository.AnalyticsPrefs
 /** Use case for toggling the analytics preference. */
 @Single
 open class ToggleAnalyticsUseCase constructor(private val analyticsPrefs: AnalyticsPrefs) {
-    operator fun invoke() {
+    open operator fun invoke() {
         analyticsPrefs.setAnalyticsAllowed(!analyticsPrefs.analyticsAllowed.value)
     }
 }

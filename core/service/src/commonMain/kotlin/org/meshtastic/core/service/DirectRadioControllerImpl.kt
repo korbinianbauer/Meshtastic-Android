@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -61,8 +61,9 @@ class DirectRadioControllerImpl(
         get() = router.actionHandler
 
     private val myNodeNum: Int
-        get() = nodeManager.myNodeNum ?: 0
+        get() = nodeManager.myNodeNum.value ?: 0
 
+    /** Delegates to [ServiceRepository.connectionState] — the canonical app-level source of truth. */
     override val connectionState: StateFlow<ConnectionState>
         get() = serviceRepository.connectionState
 
@@ -78,15 +79,17 @@ class DirectRadioControllerImpl(
     }
 
     override suspend fun favoriteNode(nodeNum: Int) {
-        val nodeDef = nodeRepository.getNode(nodeNum.toString())
+        val nodeDef = nodeRepository.getNode(DataPacket.nodeNumToDefaultId(nodeNum))
         serviceRepository.onServiceAction(ServiceAction.Favorite(nodeDef))
     }
 
-    override suspend fun sendSharedContact(nodeNum: Int) {
-        val nodeDef = nodeRepository.getNode(nodeNum.toString())
+    override suspend fun sendSharedContact(nodeNum: Int): Boolean {
+        val nodeDef = nodeRepository.getNode(DataPacket.nodeNumToDefaultId(nodeNum))
         val contact =
             SharedContact(node_num = nodeDef.num, user = nodeDef.user, manually_verified = nodeDef.manuallyVerified)
-        serviceRepository.onServiceAction(ServiceAction.SendContact(contact))
+        val action = ServiceAction.SendContact(contact)
+        serviceRepository.onServiceAction(action)
+        return action.result.await()
     }
 
     override suspend fun setLocalConfig(config: Config) {
@@ -178,7 +181,7 @@ class DirectRadioControllerImpl(
     }
 
     override suspend fun removeByNodenum(packetId: Int, nodeNum: Int) {
-        val myNode = nodeManager.myNodeNum
+        val myNode = nodeManager.myNodeNum.value
         if (myNode != null) {
             actionHandler.handleRemoveByNodenum(nodeNum, packetId, myNode)
         } else {

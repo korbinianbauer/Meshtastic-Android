@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,10 +18,10 @@ package org.meshtastic.feature.node.detail
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.Single
+import org.meshtastic.core.common.util.ioDispatcher
 import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.RadioController
 import org.meshtastic.core.model.service.ServiceAction
@@ -43,23 +43,26 @@ import org.meshtastic.core.resources.unmute
 import org.meshtastic.core.ui.util.AlertManager
 
 @Single
-class NodeManagementActions
+open class NodeManagementActions
 constructor(
     private val nodeRepository: NodeRepository,
     private val serviceRepository: ServiceRepository,
     private val radioController: RadioController,
     private val alertManager: AlertManager,
 ) {
-    fun requestRemoveNode(scope: CoroutineScope, node: Node) {
+    open fun requestRemoveNode(scope: CoroutineScope, node: Node, onAfterRemove: () -> Unit = {}) {
         alertManager.showAlert(
             titleRes = Res.string.remove,
             messageRes = Res.string.remove_node_text,
-            onConfirm = { removeNode(scope, node.num) },
+            onConfirm = {
+                removeNode(scope, node.num)
+                onAfterRemove()
+            },
         )
     }
 
-    fun removeNode(scope: CoroutineScope, nodeNum: Int) {
-        scope.launch(Dispatchers.IO) {
+    open fun removeNode(scope: CoroutineScope, nodeNum: Int) {
+        scope.launch(ioDispatcher) {
             Logger.i { "Removing node '$nodeNum'" }
             val packetId = radioController.getPacketId()
             radioController.removeByNodenum(packetId, nodeNum)
@@ -67,7 +70,7 @@ constructor(
         }
     }
 
-    fun requestIgnoreNode(scope: CoroutineScope, node: Node) {
+    open fun requestIgnoreNode(scope: CoroutineScope, node: Node) {
         scope.launch {
             val message =
                 getString(if (node.isIgnored) Res.string.ignore_remove else Res.string.ignore_add, node.user.long_name)
@@ -79,11 +82,11 @@ constructor(
         }
     }
 
-    fun ignoreNode(scope: CoroutineScope, node: Node) {
-        scope.launch(Dispatchers.IO) { serviceRepository.onServiceAction(ServiceAction.Ignore(node)) }
+    open fun ignoreNode(scope: CoroutineScope, node: Node) {
+        scope.launch(ioDispatcher) { serviceRepository.onServiceAction(ServiceAction.Ignore(node)) }
     }
 
-    fun requestMuteNode(scope: CoroutineScope, node: Node) {
+    open fun requestMuteNode(scope: CoroutineScope, node: Node) {
         scope.launch {
             val message =
                 getString(if (node.isMuted) Res.string.mute_remove else Res.string.mute_add, node.user.long_name)
@@ -95,11 +98,11 @@ constructor(
         }
     }
 
-    fun muteNode(scope: CoroutineScope, node: Node) {
-        scope.launch(Dispatchers.IO) { serviceRepository.onServiceAction(ServiceAction.Mute(node)) }
+    open fun muteNode(scope: CoroutineScope, node: Node) {
+        scope.launch(ioDispatcher) { serviceRepository.onServiceAction(ServiceAction.Mute(node)) }
     }
 
-    fun requestFavoriteNode(scope: CoroutineScope, node: Node) {
+    open fun requestFavoriteNode(scope: CoroutineScope, node: Node) {
         scope.launch {
             val message =
                 getString(
@@ -114,12 +117,12 @@ constructor(
         }
     }
 
-    fun favoriteNode(scope: CoroutineScope, node: Node) {
-        scope.launch(Dispatchers.IO) { serviceRepository.onServiceAction(ServiceAction.Favorite(node)) }
+    open fun favoriteNode(scope: CoroutineScope, node: Node) {
+        scope.launch(ioDispatcher) { serviceRepository.onServiceAction(ServiceAction.Favorite(node)) }
     }
 
-    fun setNodeNotes(scope: CoroutineScope, nodeNum: Int, notes: String) {
-        scope.launch(Dispatchers.IO) {
+    open fun setNodeNotes(scope: CoroutineScope, nodeNum: Int, notes: String) {
+        scope.launch(ioDispatcher) {
             try {
                 nodeRepository.setNodeNotes(nodeNum, notes)
             } catch (ex: Exception) {

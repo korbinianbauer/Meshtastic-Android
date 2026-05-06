@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,8 @@
  */
 package org.meshtastic.core.model.util
 
+import org.meshtastic.core.model.util.TimeConstants.HOURS_PER_DAY
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -45,4 +47,17 @@ fun formatUptime(seconds: Int): String {
         )
             .joinToString(" ")
     }
+}
+
+/**
+ * Calculates the remaining mute time in days and hours.
+ *
+ * @param remainingMillis The remaining time in milliseconds
+ * @return Pair of (days, hours), where days is Int and hours is Double
+ */
+fun formatMuteRemainingTime(remainingMillis: Long): Pair<Int, Double> {
+    val duration = remainingMillis.milliseconds
+    if (duration <= kotlin.time.Duration.ZERO) return 0 to 0.0
+    val totalHours = duration.toDouble(kotlin.time.DurationUnit.HOURS)
+    return (totalHours / HOURS_PER_DAY).toInt() to (totalHours % HOURS_PER_DAY)
 }

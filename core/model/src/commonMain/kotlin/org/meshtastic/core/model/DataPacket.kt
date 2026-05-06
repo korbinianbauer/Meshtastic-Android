@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@ import org.meshtastic.core.common.util.CommonParcel
 import org.meshtastic.core.common.util.CommonParcelable
 import org.meshtastic.core.common.util.CommonParcelize
 import org.meshtastic.core.common.util.CommonTypeParceler
+import org.meshtastic.core.common.util.formatString
 import org.meshtastic.core.common.util.nowMillis
 import org.meshtastic.core.model.util.ByteStringParceler
 import org.meshtastic.core.model.util.ByteStringSerializer
@@ -190,7 +191,7 @@ data class DataPacket(
         // Public-key cryptography (PKC) channel index
         const val PKC_CHANNEL_INDEX = 8
 
-        fun nodeNumToDefaultId(n: Int): String = "!%08x".format(n)
+        fun nodeNumToDefaultId(n: Int): String = formatString("!%08x", n)
 
         @Suppress("MagicNumber")
         fun idToDefaultNodeNum(id: String?): Int? = runCatching { id?.toLong(16)?.toInt() }.getOrNull()

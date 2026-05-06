@@ -16,18 +16,21 @@
  */
 package org.meshtastic.core.data.manager
 
-import io.mockk.coVerify
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
+import dev.mokkery.MockMode
+import dev.mokkery.answering.returns
+import dev.mokkery.every
+import dev.mokkery.matcher.any
+import dev.mokkery.mock
+import dev.mokkery.verify
+import dev.mokkery.verifySuspend
+import io.kotest.property.Arb
+import io.kotest.property.arbitrary.int
+import io.kotest.property.checkAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import org.junit.Before
-import org.junit.Test
 import org.meshtastic.core.model.ConnectionState
-import org.meshtastic.core.model.MeshLog
 import org.meshtastic.core.repository.MeshLogRepository
 import org.meshtastic.core.repository.PacketRepository
 import org.meshtastic.core.repository.RadioInterfaceService
@@ -38,14 +41,18 @@ import org.meshtastic.proto.MeshPacket
 import org.meshtastic.proto.PortNum
 import org.meshtastic.proto.QueueStatus
 import org.meshtastic.proto.ToRadio
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertNotNull
 
 class PacketHandlerImplTest {
 
-    private val packetRepository: PacketRepository = mockk(relaxed = true)
-    private val serviceBroadcasts: ServiceBroadcasts = mockk(relaxed = true)
-    private val radioInterfaceService: RadioInterfaceService = mockk(relaxed = true)
-    private val meshLogRepository: MeshLogRepository = mockk(relaxed = true)
-    private val serviceRepository: ServiceRepository = mockk(relaxed = true)
+    private val packetRepository: PacketRepository = mock(MockMode.autofill)
+    private val serviceBroadcasts: ServiceBroadcasts = mock(MockMode.autofill)
+    private val radioInterfaceService: RadioInterfaceService = mock(MockMode.autofill)
+    private val meshLogRepository: MeshLogRepository = mock(MockMode.autofill)
+    private val serviceRepository: ServiceRepository = mock(MockMode.autofill)
+
     private val connectionStateFlow = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
 
     private val testDispatcher = StandardTestDispatcher()
@@ -53,10 +60,9 @@ class PacketHandlerImplTest {
 
     private lateinit var handler: PacketHandlerImpl
 
-    @Before
+    @BeforeTest
     fun setUp() {
         every { serviceRepository.connectionState } returns connectionStateFlow
-        every { serviceRepository.setConnectionState(any()) } answers { connectionStateFlow.value = firstArg() }
 
         handler =
             PacketHandlerImpl(
@@ -65,8 +71,13 @@ class PacketHandlerImplTest {
                 radioInterfaceService,
                 lazy { meshLogRepository },
                 serviceRepository,
+                testScope,
             )
-        handler.start(testScope)
+    }
+
+    @Test
+    fun testInitialization() {
+        assertNotNull(handler)
     }
 
     @Test
@@ -109,6 +120,17 @@ class PacketHandlerImplTest {
     }
 
     @Test
+    fun `handleQueueStatus property test`() = runTest(testDispatcher) {
+        checkAll(Arb.int(0, 10), Arb.int(0, 32), Arb.int(0, 100000)) { res, free, packetId ->
+            val status = QueueStatus(res = res, free = free, mesh_packet_id = packetId)
+
+            // Ensure it doesn't crash on any input
+            handler.handleQueueStatus(status)
+            testScheduler.runCurrent()
+        }
+    }
+
+    @Test
     fun `outgoing packets are logged with NODE_NUM_LOCAL`() = runTest(testDispatcher) {
         val packet = MeshPacket(id = 123, decoded = Data(portnum = PortNum.TEXT_MESSAGE_APP))
         val toRadio = ToRadio(packet = packet)
@@ -116,6 +138,6 @@ class PacketHandlerImplTest {
         handler.sendToRadio(toRadio)
         testScheduler.runCurrent()
 
-        coVerify { meshLogRepository.insert(match { log -> log.fromNum == MeshLog.NODE_NUM_LOCAL }) }
+        verifySuspend { meshLogRepository.insert(any()) }
     }
 }

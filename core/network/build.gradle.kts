@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,12 +23,10 @@ plugins {
 }
 
 kotlin {
-    jvm()
-
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.core.network"
         androidResources.enable = false
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     sourceSets {
@@ -38,33 +36,32 @@ kotlin {
             implementation(projects.core.di)
             implementation(projects.core.model)
             implementation(projects.core.proto)
+            implementation(projects.core.ble)
 
             implementation(libs.okio)
+            api(libs.meshtastic.mqtt.client)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.client.logging)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.kermit)
+            implementation(libs.jetbrains.lifecycle.runtime)
         }
 
-        val jvmMain by getting { dependencies { implementation(libs.ktor.client.java) } }
-
-        androidMain.dependencies {
-            implementation(libs.org.eclipse.paho.client.mqttv3)
-            implementation(libs.coil.network.okhttp)
-            implementation(libs.coil.svg)
-            implementation(libs.ktor.client.okhttp)
-            implementation(libs.okhttp3.logging.interceptor)
+        val jvmMain by getting {
+            dependencies {
+                implementation(libs.ktor.client.java)
+                implementation(libs.jserialcomm)
+                implementation(libs.jmdns)
+            }
         }
 
-        commonTest.dependencies { implementation(libs.kotlinx.coroutines.test) }
-    }
-}
+        androidMain.dependencies { implementation(libs.usb.serial.android) }
 
-val marketplaceAttr = Attribute.of("marketplace", String::class.java)
-
-configurations.all {
-    if (name.contains("android", ignoreCase = true)) {
-        attributes.attribute(marketplaceAttr, "fdroid")
+        commonTest.dependencies {
+            implementation(projects.core.testing)
+            implementation(libs.kotlinx.coroutines.test)
+        }
     }
 }

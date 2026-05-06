@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,7 +77,7 @@ class ProcessRadioResponseUseCaseTest {
 
         // Assert
         assertTrue(result is RadioResponseResult.Metadata)
-        assertEquals("2.5.0", (result as RadioResponseResult.Metadata).metadata.firmware_version)
+        assertEquals("2.5.0", result.metadata.firmware_version)
     }
 
     @Test
@@ -99,7 +99,94 @@ class ProcessRadioResponseUseCaseTest {
 
         // Assert
         assertTrue(result is RadioResponseResult.CannedMessages)
-        assertEquals("Hello World", (result as RadioResponseResult.CannedMessages).messages)
+        assertEquals("Hello World", result.messages)
+    }
+
+    @Test
+    fun `invoke with unexpected sender returns error`() {
+        val adminMsg = AdminMessage()
+        val packet =
+            MeshPacket(
+                from = 456,
+                decoded = Data(
+                    portnum = PortNum.ADMIN_APP,
+                    request_id = 42,
+                    payload = adminMsg.encode().toByteString(),
+                ),
+            )
+        val result = useCase(packet, 123, setOf(42))
+        assertTrue(result is RadioResponseResult.Error)
+    }
+
+    @Test
+    fun `invoke with owner response returns owner result`() {
+        val owner = org.meshtastic.proto.User(long_name = "Owner")
+        val adminMsg = AdminMessage(get_owner_response = owner)
+        val packet =
+            MeshPacket(
+                from = 123,
+                decoded = Data(
+                    portnum = PortNum.ADMIN_APP,
+                    request_id = 42,
+                    payload = adminMsg.encode().toByteString(),
+                ),
+            )
+        val result = useCase(packet, 123, setOf(42))
+        assertTrue(result is RadioResponseResult.Owner)
+        assertEquals("Owner", result.user.long_name)
+    }
+
+    @Test
+    fun `invoke with config response returns config result`() {
+        val config = org.meshtastic.proto.Config(lora = org.meshtastic.proto.Config.LoRaConfig(use_preset = true))
+        val adminMsg = AdminMessage(get_config_response = config)
+        val packet =
+            MeshPacket(
+                from = 123,
+                decoded = Data(
+                    portnum = PortNum.ADMIN_APP,
+                    request_id = 42,
+                    payload = adminMsg.encode().toByteString(),
+                ),
+            )
+        val result = useCase(packet, 123, setOf(42))
+        assertTrue(result is RadioResponseResult.ConfigResponse)
+    }
+
+    @Test
+    fun `invoke with module config response returns module config result`() {
+        val config =
+            org.meshtastic.proto.ModuleConfig(mqtt = org.meshtastic.proto.ModuleConfig.MQTTConfig(enabled = true))
+        val adminMsg = AdminMessage(get_module_config_response = config)
+        val packet =
+            MeshPacket(
+                from = 123,
+                decoded = Data(
+                    portnum = PortNum.ADMIN_APP,
+                    request_id = 42,
+                    payload = adminMsg.encode().toByteString(),
+                ),
+            )
+        val result = useCase(packet, 123, setOf(42))
+        assertTrue(result is RadioResponseResult.ModuleConfigResponse)
+    }
+
+    @Test
+    fun `invoke with channel response returns channel result`() {
+        val channel = org.meshtastic.proto.Channel(settings = org.meshtastic.proto.ChannelSettings(name = "Main"))
+        val adminMsg = AdminMessage(get_channel_response = channel)
+        val packet =
+            MeshPacket(
+                from = 123,
+                decoded = Data(
+                    portnum = PortNum.ADMIN_APP,
+                    request_id = 42,
+                    payload = adminMsg.encode().toByteString(),
+                ),
+            )
+        val result = useCase(packet, 123, setOf(42))
+        assertTrue(result is RadioResponseResult.ChannelResponse)
+        assertEquals("Main", result.channel.settings?.name)
     }
 
     private fun ByteArray.toByteString() = okio.ByteString.of(*this)

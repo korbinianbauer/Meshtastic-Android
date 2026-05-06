@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,9 +34,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CalendarMonth
-import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
@@ -60,7 +57,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.Month
 import kotlinx.datetime.toInstant
@@ -82,9 +78,13 @@ import org.meshtastic.core.resources.waypoint_edit
 import org.meshtastic.core.resources.waypoint_new
 import org.meshtastic.core.ui.component.EditTextPreference
 import org.meshtastic.core.ui.emoji.EmojiPickerDialog
+import org.meshtastic.core.ui.icon.CalendarMonth
+import org.meshtastic.core.ui.icon.Lock
+import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.core.ui.theme.AppTheme
 import org.meshtastic.proto.Waypoint
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 @OptIn(ExperimentalLayoutApi::class)
@@ -100,7 +100,7 @@ fun EditWaypointDialog(
     val title = if (waypoint.id == 0) Res.string.waypoint_new else Res.string.waypoint_edit
 
     @Suppress("MagicNumber")
-    val emoji = if ((waypointInput.icon ?: 0) == 0) 128205 else waypointInput.icon!!
+    val emoji = if (waypointInput.icon == 0) 128205 else waypointInput.icon
     var showEmojiPickerView by remember { mutableStateOf(false) }
 
     // Get current context for dialogs
@@ -115,11 +115,11 @@ fun EditWaypointDialog(
 
     val currentInstant =
         remember(waypointInput.expire) {
-            val expire = waypointInput.expire ?: 0
+            val expire = waypointInput.expire
             if (expire != 0 && expire != Int.MAX_VALUE) {
-                Instant.fromEpochSeconds(expire.toLong())
+                kotlin.time.Instant.fromEpochSeconds(expire.toLong())
             } else {
-                kotlinx.datetime.Clock.System.now() + 8.hours
+                kotlin.time.Clock.System.now() + 8.hours
             }
         }
 
@@ -127,7 +127,7 @@ fun EditWaypointDialog(
     var selectedDate by
         remember(currentInstant) {
             mutableStateOf(
-                if ((waypointInput.expire ?: 0) != 0 && waypointInput.expire != Int.MAX_VALUE) {
+                if (waypointInput.expire != 0 && waypointInput.expire != Int.MAX_VALUE) {
                     dateFormat.format(java.util.Date(currentInstant.toEpochMilliseconds()))
                 } else {
                     ""
@@ -137,7 +137,7 @@ fun EditWaypointDialog(
     var selectedTime by
         remember(currentInstant) {
             mutableStateOf(
-                if ((waypointInput.expire ?: 0) != 0 && waypointInput.expire != Int.MAX_VALUE) {
+                if (waypointInput.expire != 0 && waypointInput.expire != Int.MAX_VALUE) {
                     timeFormat.format(java.util.Date(currentInstant.toEpochMilliseconds()))
                 } else {
                     ""
@@ -162,7 +162,7 @@ fun EditWaypointDialog(
                     )
                     EditTextPreference(
                         title = stringResource(Res.string.name),
-                        value = waypointInput.name ?: "",
+                        value = waypointInput.name,
                         maxSize = 29,
                         enabled = true,
                         isError = false,
@@ -185,7 +185,7 @@ fun EditWaypointDialog(
                     )
                     EditTextPreference(
                         title = stringResource(Res.string.description),
-                        value = waypointInput.description ?: "",
+                        value = waypointInput.description,
                         maxSize = 99,
                         enabled = true,
                         isError = false,
@@ -198,11 +198,14 @@ fun EditWaypointDialog(
                         modifier = Modifier.fillMaxWidth().size(48.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Image(imageVector = Icons.Rounded.Lock, contentDescription = stringResource(Res.string.locked))
+                        Image(
+                            imageVector = MeshtasticIcons.Lock,
+                            contentDescription = stringResource(Res.string.locked),
+                        )
                         Text(stringResource(Res.string.locked))
                         Switch(
                             modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End),
-                            checked = (waypointInput.locked_to ?: 0) != 0,
+                            checked = waypointInput.locked_to != 0,
                             onCheckedChange = { waypointInput = waypointInput.copy(locked_to = if (it) 1 else 0) },
                         )
                     }
@@ -225,7 +228,7 @@ fun EditWaypointDialog(
                                 waypointInput = waypointInput.copy(expire = newLdt.toInstant(tz).epochSeconds.toInt())
                             },
                             ldt.year,
-                            ldt.monthNumber - 1,
+                            ldt.month.ordinal,
                             ldt.day,
                         )
 
@@ -255,13 +258,13 @@ fun EditWaypointDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Image(
-                            imageVector = Icons.Rounded.CalendarMonth,
+                            imageVector = MeshtasticIcons.CalendarMonth,
                             contentDescription = stringResource(Res.string.expires),
                         )
                         Text(stringResource(Res.string.expires))
                         Switch(
                             modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End),
-                            checked = waypointInput.expire != Int.MAX_VALUE && (waypointInput.expire ?: 0) != 0,
+                            checked = waypointInput.expire != Int.MAX_VALUE && waypointInput.expire != 0,
                             onCheckedChange = { isChecked ->
                                 if (isChecked) {
                                     waypointInput = waypointInput.copy(expire = currentInstant.epochSeconds.toInt())
@@ -272,7 +275,7 @@ fun EditWaypointDialog(
                         )
                     }
 
-                    if (waypointInput.expire != Int.MAX_VALUE && (waypointInput.expire ?: 0) != 0) {
+                    if (waypointInput.expire != Int.MAX_VALUE && waypointInput.expire != 0) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),

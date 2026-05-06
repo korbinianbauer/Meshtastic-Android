@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.meshtastic.buildlogic
 
 import org.gradle.api.Project
@@ -38,16 +37,8 @@ fun Project.configureDokka() {
             }
 
             // Dokka 2.x requires each source file to belong to exactly one source set.
-            val baseSourceSets = listOf(
-                "main",
-                "commonMain",
-                "androidMain",
-                "jvmMain",
-                "jvmAndroidMain",
-                "fdroid",
-                "google",
-                "release"
-            )
+            val baseSourceSets =
+                listOf("main", "commonMain", "androidMain", "jvmMain", "jvmAndroidMain", "fdroid", "google", "release")
 
             val isCoreSourceSet = name in baseSourceSets
             suppress.set(!isCoreSourceSet)
@@ -59,8 +50,7 @@ fun Project.configureDokka() {
 
                 // Standardized repo-root based source links
                 localDirectory.set(project.projectDir)
-                val relativePath =
-                    project.projectDir.relativeTo(rootProject.projectDir).path.replace("\\", "/")
+                val relativePath = project.projectDir.relativeTo(rootProject.projectDir).path.replace("\\", "/")
                 remoteUrl.set(URI("https://github.com/meshtastic/Meshtastic-Android/blob/main/$relativePath"))
                 remoteLineSuffix.set("#L")
             }
@@ -69,19 +59,19 @@ fun Project.configureDokka() {
 }
 
 /**
- * Configure Dokka aggregation in a way that is compatible with Gradle Isolated Projects.
+ * Configure Dokka aggregation for the root project.
+ *
+ * Accepts an explicit list of subproject paths to avoid `subprojects {}` iteration, which is incompatible with Gradle
+ * Isolated Projects. The list should match the modules declared in `settings.gradle.kts`.
  */
-fun Project.configureDokkaAggregation() {
+fun Project.configureDokkaAggregation(subprojectPaths: List<String>) {
     extensions.configure<DokkaExtension> {
         moduleName.set("Meshtastic App")
-        dokkaPublications.configureEach {
-            suppressInheritedMembers.set(true)
-        }
+        dokkaPublications.configureEach { suppressInheritedMembers.set(true) }
     }
 
-    subprojects.forEach { subproject ->
-        subproject.pluginManager.withPlugin("org.jetbrains.dokka") {
-            dependencies.add("dokka", subproject)
-        }
-    }
+    // Add each subproject as a Dokka dependency using declared paths rather than
+    // iterating live subproject objects. This avoids cross-project configuration
+    // access and is compatible with Gradle Isolated Projects.
+    subprojectPaths.forEach { path -> dependencies.add("dokka", project(path)) }
 }

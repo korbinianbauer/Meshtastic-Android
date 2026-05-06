@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,10 +25,21 @@ import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import org.meshtastic.proto.LocalStats
 
-/** Class that handles saving and retrieving [LocalStats] data. */
+/** Interface that handles saving and retrieving [LocalStats] data. */
+interface LocalStatsDataSource {
+    val localStatsFlow: Flow<LocalStats>
+
+    suspend fun setLocalStats(stats: LocalStats)
+
+    suspend fun clearLocalStats()
+}
+
+/** Implementation of [LocalStatsDataSource] using DataStore. */
 @Single
-class LocalStatsDataSource(@Named("CoreLocalStatsDataStore") private val localStatsStore: DataStore<LocalStats>) {
-    val localStatsFlow: Flow<LocalStats> =
+open class LocalStatsDataSourceImpl(
+    @Named("CoreLocalStatsDataStore") private val localStatsStore: DataStore<LocalStats>,
+) : LocalStatsDataSource {
+    override val localStatsFlow: Flow<LocalStats> =
         localStatsStore.data.catch { exception ->
             if (exception is IOException) {
                 Logger.e { "Error reading LocalStats: ${exception.message}" }
@@ -38,11 +49,11 @@ class LocalStatsDataSource(@Named("CoreLocalStatsDataStore") private val localSt
             }
         }
 
-    suspend fun setLocalStats(stats: LocalStats) {
+    override suspend fun setLocalStats(stats: LocalStats) {
         localStatsStore.updateData { stats }
     }
 
-    suspend fun clearLocalStats() {
+    override suspend fun clearLocalStats() {
         localStatsStore.updateData { LocalStats() }
     }
 }

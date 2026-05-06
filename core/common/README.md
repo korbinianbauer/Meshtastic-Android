@@ -11,8 +11,8 @@ Contains general-purpose extensions and helpers:
 - **Time**: Utilities for handling timestamps and durations.
 - **Exceptions**: Standardized exception types for common error scenarios.
 
-### 2. `ByteUtils.kt`
-Low-level operations for working with `ByteArray` and binary data, essential for parsing radio protocol packets.
+### 2. `MetricFormatter.kt`
+Centralized utility for display strings — temperature, voltage, current, percent, humidity, pressure, SNR, RSSI. Ensures consistent unit spacing and formatting across all UI surfaces.
 
 ### 3. `BuildConfigProvider.kt`
 An interface for accessing build-time configuration in a multiplatform-friendly way.
@@ -32,6 +32,8 @@ classDef android-library fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
 classDef android-library-compose fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
 classDef android-test fill:#A0C4FF,stroke:#000,stroke-width:2px,color:#000;
 classDef jvm-library fill:#BDB2FF,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-feature fill:#FFD6A5,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-library-compose fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
 classDef kmp-library fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
 classDef unknown fill:#FFADAD,stroke:#000,stroke-width:2px,color:#000;
 

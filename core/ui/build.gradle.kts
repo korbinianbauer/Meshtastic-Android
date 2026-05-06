@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,12 +19,10 @@ plugins {
     alias(libs.plugins.meshtastic.kmp.library)
     alias(libs.plugins.meshtastic.kmp.library.compose)
     id("meshtastic.kmp.jvm.android")
-    alias(libs.plugins.meshtastic.koin)
+    id("meshtastic.koin")
 }
 
 kotlin {
-    jvm()
-
     android {
         namespace = "org.meshtastic.core.ui"
         androidResources.enable = false
@@ -44,33 +42,37 @@ kotlin {
             implementation(projects.core.resources)
             implementation(projects.core.service)
 
+            implementation(libs.compose.multiplatform.animation)
             implementation(libs.compose.multiplatform.material3)
-            implementation(libs.compose.multiplatform.materialIconsExtended)
             implementation(libs.compose.multiplatform.ui)
             implementation(libs.compose.multiplatform.foundation)
-            implementation(libs.compose.multiplatform.runtime)
-            implementation(libs.compose.multiplatform.resources)
-            implementation(libs.compose.multiplatform.ui.tooling)
+            api(libs.compose.multiplatform.ui.tooling.preview)
 
             implementation(libs.kermit)
             implementation(libs.koin.compose.viewmodel)
+            implementation(libs.qrcode.kotlin)
+            implementation(libs.jetbrains.compose.material3.adaptive)
+            implementation(libs.jetbrains.compose.material3.adaptive.layout)
+            implementation(libs.jetbrains.compose.material3.adaptive.navigation)
+            implementation(libs.jetbrains.compose.material3.adaptive.navigation.suite)
+            implementation(libs.jetbrains.navigation3.ui)
+            implementation(libs.jetbrains.compose.material3.adaptive.navigation3)
+            implementation(libs.jetbrains.lifecycle.viewmodel.navigation3)
+            implementation(libs.jetbrains.lifecycle.viewmodel.compose)
+            implementation(libs.jetbrains.lifecycle.runtime.compose)
         }
 
-        androidMain.dependencies {
-            implementation(libs.androidx.activity.compose)
-            implementation(libs.zxing.core)
-            implementation(libs.nordic.common.core)
-        }
+        val jvmAndroidMain by getting { dependencies { implementation(libs.compose.multiplatform.ui.tooling) } }
+
+        androidMain.dependencies { implementation(libs.androidx.activity.compose) }
 
         commonTest.dependencies {
+            implementation(projects.core.testing)
             implementation(libs.junit)
             implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.turbine)
+            implementation(libs.compose.multiplatform.ui.test)
         }
 
-        androidUnitTest.dependencies {
-            implementation(libs.mockk)
-            implementation(libs.androidx.test.runner)
-        }
+        jvmTest.dependencies { implementation(compose.desktop.currentOs) }
     }
 }

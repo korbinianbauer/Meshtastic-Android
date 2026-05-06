@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,57 +18,63 @@ package org.meshtastic.feature.connections.domain.usecase
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
-import org.jetbrains.compose.resources.getString
-import org.koin.core.annotation.Single
+import kotlinx.coroutines.flow.flowOf
 import org.meshtastic.core.common.database.DatabaseManager
+import org.meshtastic.core.common.util.safeCatchingAll
 import org.meshtastic.core.datastore.RecentAddressesDataSource
+import org.meshtastic.core.network.repository.DiscoveredService
 import org.meshtastic.core.repository.NodeRepository
 import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.demo_mode
+import org.meshtastic.core.resources.getStringSuspend
+import org.meshtastic.core.resources.meshtastic
 import org.meshtastic.feature.connections.model.DeviceListEntry
 import org.meshtastic.feature.connections.model.DiscoveredDevices
 import org.meshtastic.feature.connections.model.GetDiscoveredDevicesUseCase
 
-@Single
-class CommonGetDiscoveredDevicesUseCase(
+/**
+ * Platform-agnostic implementation of [GetDiscoveredDevicesUseCase].
+ *
+ * Intentionally NOT annotated `@Single` in common source: on Android, the richer
+ * [org.meshtastic.feature.connections.domain.usecase.AndroidGetDiscoveredDevicesUseCase] is the canonical binding, and
+ * a common `@Single` here would silently override it (last-write-wins), producing an empty USB list. Each non-Android
+ * target registers its own `@Single` wrapper (see `JvmGetDiscoveredDevicesUseCase`).
+ */
+open class CommonGetDiscoveredDevicesUseCase(
     private val recentAddressesDataSource: RecentAddressesDataSource,
     private val nodeRepository: NodeRepository,
     private val databaseManager: DatabaseManager,
+    private val usbScanner: UsbScanner? = null,
 ) : GetDiscoveredDevicesUseCase {
-    private val suffixLength = 4
 
-    override fun invoke(showMock: Boolean): Flow<DiscoveredDevices> {
+    override fun invoke(showMock: Boolean, resolvedList: Flow<List<DiscoveredService>>): Flow<DiscoveredDevices> {
         val nodeDb = nodeRepository.nodeDBbyNum
+        val usbFlow = usbScanner?.scanUsbDevices() ?: flowOf(emptyList())
 
-        return combine(nodeDb, recentAddressesDataSource.recentAddresses) { db, recentList ->
-            val recentTcpForUi =
-                recentList
-                    .map { DeviceListEntry.Tcp(it.name, it.address) }
-                    .map { entry ->
-                        val matchingNode =
-                            if (databaseManager.hasDatabaseFor(entry.fullAddress)) {
-                                val suffix = entry.name.split("_").lastOrNull()?.lowercase()
-                                db.values.find { node ->
-                                    suffix != null &&
-                                        suffix.length >= suffixLength &&
-                                        node.user.id.lowercase().endsWith(suffix)
-                                }
-                            } else {
-                                null
-                            }
-                        entry.copy(node = matchingNode)
-                    }
-                    .sortedBy { it.name }
+        return combine(nodeDb, resolvedList, recentAddressesDataSource.recentAddresses, usbFlow) {
+                db,
+                resolved,
+                recentList,
+                usbList,
+            ->
+            val defaultName = safeCatchingAll { getStringSuspend(Res.string.meshtastic) }.getOrDefault("Meshtastic")
+            val processedTcp = processTcpServices(resolved, recentList, defaultName)
+            val discoveredTcpAddresses = processedTcp.mapTo(mutableSetOf()) { it.fullAddress }
+
+            val discoveredTcpForUi = matchDiscoveredTcpNodes(processedTcp, db, resolved, databaseManager)
+            val recentTcpForUi = buildRecentTcpEntries(recentList, discoveredTcpAddresses, db, databaseManager)
+
+            val mockEntries = buildList {
+                if (showMock) {
+                    val label = safeCatchingAll { getStringSuspend(Res.string.demo_mode) }.getOrDefault("Demo Mode")
+                    add(DeviceListEntry.Mock(label))
+                }
+            }
 
             DiscoveredDevices(
+                discoveredTcpDevices = discoveredTcpForUi,
                 recentTcpDevices = recentTcpForUi,
-                usbDevices =
-                if (showMock) {
-                    val demoModeLabel = runCatching { getString(Res.string.demo_mode) }.getOrDefault("Demo Mode")
-                    listOf(DeviceListEntry.Mock(demoModeLabel))
-                } else {
-                    emptyList()
-                },
+                usbDevices = usbList + mockEntries,
             )
         }
     }

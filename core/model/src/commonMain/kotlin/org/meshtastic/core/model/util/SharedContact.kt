@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,7 +62,7 @@ private fun decodeSharedContactData(data: String): SharedContact {
             sanitized.decodeBase64() ?: throw IllegalArgumentException("Invalid Base64 string")
         } catch (e: IllegalArgumentException) {
             throw MalformedMeshtasticUrlException(
-                "Failed to Base64 decode SharedContact data ($data): ${e.javaClass.simpleName}: ${e.message}",
+                "Failed to Base64 decode SharedContact data ($data): ${e::class.simpleName}: ${e.message}",
             )
         }
 
@@ -70,7 +70,7 @@ private fun decodeSharedContactData(data: String): SharedContact {
         SharedContact.ADAPTER.decode(decodedBytes)
     } catch (e: Exception) {
         throw MalformedMeshtasticUrlException(
-            "Failed to proto decode SharedContact: ${e.javaClass.simpleName}: ${e.message}",
+            "Failed to proto decode SharedContact: ${e::class.simpleName}: ${e.message}",
         )
     }
 }
@@ -107,7 +107,7 @@ fun compareUsers(oldUser: User, newUser: User): String {
     return if (changes.isEmpty()) {
         "No changes detected."
     } else {
-        "Changes:\n" + changes.joinToString("\n")
+        "Changes:\n${changes.joinToString("\n")}"
     }
 }
 

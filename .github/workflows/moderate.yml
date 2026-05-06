@@ -9,7 +9,8 @@ on:
 
 jobs:
   spam-detection:
-    runs-on: ubuntu-latest
+    if: github.repository == 'meshtastic/Meshtastic-Android'
+    runs-on: ubuntu-24.04-arm
     permissions:
       issues: write
       pull-requests: write

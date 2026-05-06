@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,5 +27,5 @@ interface BleScanner {
      * @param timeout The duration of the scan.
      * @return A [Flow] of discovered [BleDevice]s.
      */
-    fun scan(timeout: Duration, serviceUuid: kotlin.uuid.Uuid? = null): Flow<BleDevice>
+    fun scan(timeout: Duration, serviceUuid: kotlin.uuid.Uuid? = null, address: String? = null): Flow<BleDevice>
 }

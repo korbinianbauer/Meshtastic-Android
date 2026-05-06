@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,13 +19,12 @@ package org.meshtastic.core.data.manager
 import co.touchlab.kermit.Logger
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import org.meshtastic.core.common.util.nowMillis
 import org.meshtastic.core.model.DataPacket
@@ -34,47 +33,51 @@ import org.meshtastic.core.model.Position
 import org.meshtastic.core.model.TelemetryType
 import org.meshtastic.core.model.util.isWithinSizeLimit
 import org.meshtastic.core.repository.CommandSender
+import org.meshtastic.core.repository.NeighborInfoHandler
 import org.meshtastic.core.repository.NodeManager
 import org.meshtastic.core.repository.PacketHandler
 import org.meshtastic.core.repository.RadioConfigRepository
+import org.meshtastic.core.repository.SessionManager
+import org.meshtastic.core.repository.TracerouteHandler
 import org.meshtastic.proto.AdminMessage
+import org.meshtastic.proto.AirQualityMetrics
 import org.meshtastic.proto.ChannelSet
 import org.meshtastic.proto.Constants
 import org.meshtastic.proto.Data
+import org.meshtastic.proto.DeviceMetrics
+import org.meshtastic.proto.EnvironmentMetrics
+import org.meshtastic.proto.HostMetrics
 import org.meshtastic.proto.LocalConfig
+import org.meshtastic.proto.LocalStats
 import org.meshtastic.proto.MeshPacket
 import org.meshtastic.proto.Neighbor
 import org.meshtastic.proto.NeighborInfo
+import org.meshtastic.proto.Paxcount
 import org.meshtastic.proto.PortNum
+import org.meshtastic.proto.PowerMetrics
 import org.meshtastic.proto.Telemetry
 import kotlin.math.absoluteValue
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.hours
+import org.meshtastic.proto.Position as ProtoPosition
 
-@Suppress("TooManyFunctions", "CyclomaticComplexMethod")
+@Suppress("TooManyFunctions", "CyclomaticComplexMethod", "LongParameterList")
 @Single
 class CommandSenderImpl(
     private val packetHandler: PacketHandler,
     private val nodeManager: NodeManager,
     private val radioConfigRepository: RadioConfigRepository,
+    private val tracerouteHandler: TracerouteHandler,
+    private val neighborInfoHandler: NeighborInfoHandler,
+    private val sessionManager: SessionManager,
+    @Named("ServiceScope") private val scope: CoroutineScope,
 ) : CommandSender {
-    private var scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val currentPacketId = atomic(Random(nowMillis).nextLong().absoluteValue)
-    private val sessionPasskey = atomic(ByteString.EMPTY)
-    override val tracerouteStartTimes = mutableMapOf<Int, Long>()
-    override val neighborInfoStartTimes = mutableMapOf<Int, Long>()
 
     private val localConfig = MutableStateFlow(LocalConfig())
     private val channelSet = MutableStateFlow(ChannelSet())
 
-    override var lastNeighborInfo: NeighborInfo? = null
-
-    // We'll need a way to track connection state in shared code,
-    // maybe via ServiceRepository or similar.
-    // For now I'll assume it's injected or available.
-
-    override fun start(scope: CoroutineScope) {
-        this.scope = scope
+    init {
         radioConfigRepository.localConfigFlow.onEach { localConfig.value = it }.launchIn(scope)
         radioConfigRepository.channelSetFlow.onEach { channelSet.value = it }.launchIn(scope)
     }
@@ -91,28 +94,38 @@ class CommandSenderImpl(
         return ((next % numPacketIds) + 1L).toInt()
     }
 
-    override fun setSessionPasskey(key: ByteString) {
-        sessionPasskey.value = key
-    }
-
     private fun computeHopLimit(): Int = (localConfig.value.lora?.hop_limit ?: 0).takeIf { it > 0 } ?: DEFAULT_HOP_LIMIT
 
+    /**
+     * Resolves the correct channel index for sending a packet to [toNum].
+     *
+     * PKI encryption ([DataPacket.PKC_CHANNEL_INDEX]) is only used for **admin** packets, where end-to-end encryption
+     * is appropriate. Protocol-level requests (traceroute, telemetry, position, nodeinfo, neighborinfo) must NOT use
+     * PKI because relay nodes need to read and/or modify the inner payload (e.g. traceroute appends each hop's node
+     * number). These requests fall back to the node's heard-on channel.
+     */
     private fun getAdminChannelIndex(toNum: Int): Int {
-        val myNum = nodeManager.myNodeNum ?: return 0
+        val myNum = nodeManager.myNodeNum.value ?: return 0
         val myNode = nodeManager.nodeDBbyNodeNum[myNum]
         val destNode = nodeManager.nodeDBbyNodeNum[toNum]
 
-        val adminChannelIndex =
-            when {
-                myNum == toNum -> 0
-                myNode?.hasPKC == true && destNode?.hasPKC == true -> DataPacket.PKC_CHANNEL_INDEX
-                else ->
-                    channelSet.value.settings
-                        .indexOfFirst { it.name.equals(ADMIN_CHANNEL_NAME, ignoreCase = true) }
-                        .coerceAtLeast(0)
-            }
-        return adminChannelIndex
+        return when {
+            myNum == toNum -> 0
+
+            myNode?.hasPKC == true && destNode?.hasPKC == true -> DataPacket.PKC_CHANNEL_INDEX
+
+            else ->
+                channelSet.value.settings
+                    .indexOfFirst { it.name.equals(ADMIN_CHANNEL_NAME, ignoreCase = true) }
+                    .coerceAtLeast(0)
+        }
     }
+
+    /**
+     * Returns the heard-on channel for a non-admin request to [toNum]. Does NOT use PKI — protocol-level requests need
+     * clear inner payloads.
+     */
+    private fun getChannelIndex(toNum: Int): Int = nodeManager.nodeDBbyNodeNum[toNum]?.channel ?: 0
 
     override fun sendData(p: DataPacket) {
         if (p.id == 0) p.id = generatePacketId()
@@ -131,14 +144,11 @@ class CommandSenderImpl(
         if (!Data.ADAPTER.isWithinSizeLimit(data, Constants.DATA_PAYLOAD_LEN.value)) {
             val actualSize = Data.ADAPTER.encodedSize(data)
             p.status = MessageStatus.ERROR
-            // throw RemoteException("Message too long: $actualSize bytes (max ${Constants.DATA_PAYLOAD_LEN.value})")
-            // RemoteException is Android specific. For KMP we might want a custom exception.
             error("Message too long: $actualSize bytes")
         } else {
             p.status = MessageStatus.QUEUED
         }
 
-        // TODO: Check connection state
         sendNow(p)
     }
 
@@ -163,14 +173,26 @@ class CommandSenderImpl(
     }
 
     override fun sendAdmin(destNum: Int, requestId: Int, wantResponse: Boolean, initFn: () -> AdminMessage) {
-        val adminMsg = initFn().copy(session_passkey = sessionPasskey.value)
+        val adminMsg = initFn().copy(session_passkey = sessionManager.getPasskey(destNum))
         val packet =
             buildAdminPacket(to = destNum, id = requestId, wantResponse = wantResponse, adminMessage = adminMsg)
         packetHandler.sendToRadio(packet)
     }
 
-    override fun sendPosition(pos: org.meshtastic.proto.Position, destNum: Int?, wantResponse: Boolean) {
-        val myNum = nodeManager.myNodeNum ?: return
+    override suspend fun sendAdminAwait(
+        destNum: Int,
+        requestId: Int,
+        wantResponse: Boolean,
+        initFn: () -> AdminMessage,
+    ): Boolean {
+        val adminMsg = initFn().copy(session_passkey = sessionManager.getPasskey(destNum))
+        val packet =
+            buildAdminPacket(to = destNum, id = requestId, wantResponse = wantResponse, adminMessage = adminMsg)
+        return packetHandler.sendToRadioAndAwait(packet)
+    }
+
+    override fun sendPosition(pos: ProtoPosition, destNum: Int?, wantResponse: Boolean) {
+        val myNum = nodeManager.myNodeNum.value ?: return
         val idNum = destNum ?: myNum
         Logger.d { "Sending our position/time to=$idNum $pos" }
 
@@ -181,7 +203,7 @@ class CommandSenderImpl(
         packetHandler.sendToRadio(
             buildMeshPacket(
                 to = idNum,
-                channel = if (destNum == null) 0 else nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
+                channel = if (destNum == null) 0 else getChannelIndex(destNum),
                 priority = MeshPacket.Priority.BACKGROUND,
                 decoded =
                 Data(
@@ -195,7 +217,7 @@ class CommandSenderImpl(
 
     override fun requestPosition(destNum: Int, currentPosition: Position) {
         val meshPosition =
-            org.meshtastic.proto.Position(
+            ProtoPosition(
                 latitude_i = Position.degI(currentPosition.latitude),
                 longitude_i = Position.degI(currentPosition.longitude),
                 altitude = currentPosition.altitude,
@@ -204,7 +226,7 @@ class CommandSenderImpl(
         packetHandler.sendToRadio(
             buildMeshPacket(
                 to = destNum,
-                channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
+                channel = getChannelIndex(destNum),
                 priority = MeshPacket.Priority.BACKGROUND,
                 decoded =
                 Data(
@@ -218,7 +240,7 @@ class CommandSenderImpl(
 
     override fun setFixedPosition(destNum: Int, pos: Position) {
         val meshPos =
-            org.meshtastic.proto.Position(
+            ProtoPosition(
                 latitude_i = Position.degI(pos.latitude),
                 longitude_i = Position.degI(pos.longitude),
                 altitude = pos.altitude,
@@ -230,16 +252,16 @@ class CommandSenderImpl(
                 AdminMessage(remove_fixed_position = true)
             }
         }
-        nodeManager.handleReceivedPosition(destNum, nodeManager.myNodeNum ?: 0, meshPos, nowMillis)
+        nodeManager.handleReceivedPosition(destNum, nodeManager.myNodeNum.value ?: 0, meshPos, nowMillis)
     }
 
     override fun requestUserInfo(destNum: Int) {
-        val myNum = nodeManager.myNodeNum ?: return
+        val myNum = nodeManager.myNodeNum.value ?: return
         val myNode = nodeManager.nodeDBbyNodeNum[myNum] ?: return
         packetHandler.sendToRadio(
             buildMeshPacket(
                 to = destNum,
-                channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
+                channel = getChannelIndex(destNum),
                 decoded =
                 Data(
                     portnum = PortNum.NODEINFO_APP,
@@ -251,14 +273,14 @@ class CommandSenderImpl(
     }
 
     override fun requestTraceroute(requestId: Int, destNum: Int) {
-        tracerouteStartTimes[requestId] = nowMillis
+        tracerouteHandler.recordStartTime(requestId)
         packetHandler.sendToRadio(
             buildMeshPacket(
                 to = destNum,
                 wantAck = true,
                 id = requestId,
-                channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
-                decoded = Data(portnum = PortNum.TRACEROUTE_APP, want_response = true),
+                channel = getChannelIndex(destNum),
+                decoded = Data(portnum = PortNum.TRACEROUTE_APP, want_response = true, dest = destNum),
             ),
         )
     }
@@ -271,21 +293,17 @@ class CommandSenderImpl(
 
         if (type == TelemetryType.PAX) {
             portNum = PortNum.PAXCOUNTER_APP
-            payloadBytes = org.meshtastic.proto.Paxcount().encode().toByteString()
+            payloadBytes = Paxcount().encode().toByteString()
         } else {
             portNum = PortNum.TELEMETRY_APP
             payloadBytes =
                 Telemetry(
-                    device_metrics =
-                    if (type == TelemetryType.DEVICE) org.meshtastic.proto.DeviceMetrics() else null,
-                    environment_metrics =
-                    if (type == TelemetryType.ENVIRONMENT) org.meshtastic.proto.EnvironmentMetrics() else null,
-                    air_quality_metrics =
-                    if (type == TelemetryType.AIR_QUALITY) org.meshtastic.proto.AirQualityMetrics() else null,
-                    power_metrics = if (type == TelemetryType.POWER) org.meshtastic.proto.PowerMetrics() else null,
-                    local_stats =
-                    if (type == TelemetryType.LOCAL_STATS) org.meshtastic.proto.LocalStats() else null,
-                    host_metrics = if (type == TelemetryType.HOST) org.meshtastic.proto.HostMetrics() else null,
+                    device_metrics = if (type == TelemetryType.DEVICE) DeviceMetrics() else null,
+                    environment_metrics = if (type == TelemetryType.ENVIRONMENT) EnvironmentMetrics() else null,
+                    air_quality_metrics = if (type == TelemetryType.AIR_QUALITY) AirQualityMetrics() else null,
+                    power_metrics = if (type == TelemetryType.POWER) PowerMetrics() else null,
+                    local_stats = if (type == TelemetryType.LOCAL_STATS) LocalStats() else null,
+                    host_metrics = if (type == TelemetryType.HOST) HostMetrics() else null,
                 )
                     .encode()
                     .toByteString()
@@ -295,18 +313,18 @@ class CommandSenderImpl(
             buildMeshPacket(
                 to = destNum,
                 id = requestId,
-                channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
-                decoded = Data(portnum = portNum, payload = payloadBytes, want_response = true),
+                channel = getChannelIndex(destNum),
+                decoded = Data(portnum = portNum, payload = payloadBytes, want_response = true, dest = destNum),
             ),
         )
     }
 
     override fun requestNeighborInfo(requestId: Int, destNum: Int) {
-        neighborInfoStartTimes[requestId] = nowMillis
-        val myNum = nodeManager.myNodeNum ?: 0
+        neighborInfoHandler.recordStartTime(requestId)
+        val myNum = nodeManager.myNodeNum.value ?: 0
         if (destNum == myNum) {
             val neighborInfoToSend =
-                lastNeighborInfo
+                neighborInfoHandler.lastNeighborInfo
                     ?: run {
                         val oneHour = 1.hours.inWholeMinutes.toInt()
                         Logger.d { "No stored neighbor info from connected radio, sending dummy data" }
@@ -332,7 +350,7 @@ class CommandSenderImpl(
                     to = destNum,
                     wantAck = true,
                     id = requestId,
-                    channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
+                    channel = getChannelIndex(destNum),
                     decoded =
                     Data(
                         portnum = PortNum.NEIGHBORINFO_APP,
@@ -348,8 +366,8 @@ class CommandSenderImpl(
                     to = destNum,
                     wantAck = true,
                     id = requestId,
-                    channel = nodeManager.nodeDBbyNodeNum[destNum]?.channel ?: 0,
-                    decoded = Data(portnum = PortNum.NEIGHBORINFO_APP, want_response = true),
+                    channel = getChannelIndex(destNum),
+                    decoded = Data(portnum = PortNum.NEIGHBORINFO_APP, want_response = true, dest = destNum),
                 ),
             )
         }
@@ -357,6 +375,7 @@ class CommandSenderImpl(
 
     fun resolveNodeNum(toId: String): Int = when (toId) {
         DataPacket.ID_BROADCAST -> DataPacket.NODENUM_BROADCAST
+
         else -> {
             val numericNum =
                 if (toId.startsWith(NODE_ID_PREFIX)) {
@@ -387,12 +406,19 @@ class CommandSenderImpl(
 
         if (channel == DataPacket.PKC_CHANNEL_INDEX) {
             pkiEncrypted = true
-            publicKey = nodeManager.nodeDBbyNodeNum[to]?.user?.public_key ?: ByteString.EMPTY
+            val destNode = nodeManager.nodeDBbyNodeNum[to]
+            // Resolve the public key using the same fallback as Node.hasPKC:
+            // standalone publicKey (populated after Room round-trip) first, then
+            // the embedded user.public_key (always available in-memory).
+            publicKey = destNode?.let { it.publicKey ?: it.user.public_key } ?: ByteString.EMPTY
+            if (publicKey.size == 0) {
+                Logger.w { "buildMeshPacket: no public key for node ${to.toUInt()}, PKI encryption will fail" }
+            }
             actualChannel = 0
         }
 
         return MeshPacket(
-            from = nodeManager.myNodeNum ?: 0,
+            from = nodeManager.myNodeNum.value ?: 0,
             to = to,
             id = id,
             want_ack = wantAck,

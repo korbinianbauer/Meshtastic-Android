@@ -59,15 +59,16 @@ concurrency:
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
+  statuses: write
   id-token: write
   attestations: write
 
 jobs:
   prepare-build-info:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
-      APP_VERSION_NAME: ${{ steps.get_version_name.outputs.APP_VERSION_NAME }}
+      APP_VERSION_NAME: ${{ steps.prep_version.outputs.APP_VERSION_NAME }}
       APP_VERSION_CODE: ${{ steps.calculate_version_code.outputs.versionCode }}
     steps:
       - name: Checkout code
@@ -77,9 +78,14 @@ jobs:
           fetch-depth: 0
           submodules: 'recursive'
 
-      - name: Determine Version Name from Tag
-        id: get_version_name
-        run: echo "APP_VERSION_NAME=$(echo ${{ inputs.tag_name }} | sed 's/-.*//' | sed 's/v//')" >> $GITHUB_OUTPUT
+      - name: Prep APP_VERSION_NAME
+        id: prep_version
+        env:
+          INPUT_TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          VERSION_NAME=$(echo $INPUT_TAG_NAME | sed 's/-.*//' | sed 's/v//')
+          echo "APP_VERSION_NAME=$VERSION_NAME" >> $GITHUB_OUTPUT
+          echo "Parsed Version: $VERSION_NAME"
 
       - name: Extract VERSION_CODE_OFFSET from config.properties
         id: get_version_code_offset
@@ -97,8 +103,7 @@ jobs:
         shell: bash
 
   promote-release:
-    runs-on: ubuntu-latest
-    environment: Release
+    runs-on: ubuntu-24.04-arm
     needs: [ prepare-build-info ]
     steps:
       - name: Promote to next channel
@@ -111,7 +116,7 @@ jobs:
           user-fraction: ${{ (inputs.channel == 'production' && '0.1') || (inputs.channel == 'open' && '0.5') || '1.0' }}
 
   update-github-release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: [ prepare-build-info, promote-release ]
     steps:
       - name: Checkout code
@@ -134,7 +139,100 @@ jobs:
           gh release edit ${{ inputs.tag_name }} \
             --tag ${{ inputs.final_tag }} \
             --title "${{ inputs.release_name }} (${{ needs.prepare-build-info.outputs.APP_VERSION_CODE }})" \
+            --draft=false \
             --prerelease=${{ inputs.channel != 'production' }}
+
+      - name: Stamp CHANGELOG.md for release
+        if: ${{ inputs.channel == 'production' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.final_tag }}
+          VERSION: ${{ inputs.base_version }}
+          REPO: ${{ github.repository }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Checkout CHANGELOG.md from main (we're on a tag checkout)
+          git fetch origin main
+          git checkout -b "changelog/v${VERSION}" origin/main
+
+          # Find the previous production tag for the full-range notes
+          PREV_PROD=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^v${VERSION}$" | head -1)
+
+          # Generate a single flat changelog for the entire release using GitHub API
+          FLAT_NOTES=""
+          if [ -n "$PREV_PROD" ]; then
+            FLAT_NOTES=$(gh api "repos/${REPO}/releases/generate-notes" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$(git rev-parse "$TAG")" \
+              -f previous_tag_name="$PREV_PROD" \
+              --jq '.body' 2>/dev/null || true)
+
+            # Strip boilerplate
+            FLAT_NOTES=$(echo "$FLAT_NOTES" \
+              | sed '/^<!-- .* -->/d' \
+              | sed '/^## What'\''s Changed$/d' \
+              | sed '/^\*\*Full Changelog\*\*/d' \
+              | sed '/./,$!d' \
+              | sed -e :a -e '/^\n*$/{$d;N;ba}')
+          fi
+
+          # Build the versioned section and reset unreleased
+          python3 -c "
+          import sys
+          version, date, notes = sys.argv[1], sys.argv[2], sys.argv[3]
+          with open('CHANGELOG.md', 'r') as f:
+              content = f.read()
+
+          us = '<!-- UNRELEASED_START -->'
+          ue = '<!-- UNRELEASED_END -->'
+          rs = '<!-- RELEASED_START -->'
+
+          start = content.find(us)
+          end = content.find(ue)
+          rstart = content.find(rs)
+
+          if start == -1 or end == -1 or rstart == -1:
+              print('Markers not found in CHANGELOG.md')
+              sys.exit(1)
+
+          versioned = f'## [{version}] - {date}\n\n{notes}'
+          fresh = '## [Unreleased]\n\n*No changes yet.*'
+
+          new_content = (
+              content[:start + len(us)] + '\n' + fresh + '\n'
+              + content[end:rstart + len(rs)] + '\n\n' + versioned + '\n'
+              + content[rstart + len(rs):]
+          )
+
+          with open('CHANGELOG.md', 'w') as f:
+              f.write(new_content)
+          " "$VERSION" "$DATE" "$FLAT_NOTES"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || {
+            BRANCH="automation/changelog-v${VERSION}"
+            git checkout -B "$BRANCH"
+            git commit -m "docs: release CHANGELOG.md for v${VERSION}"
+            git push origin "$BRANCH" --force
+
+            gh pr create \
+              --title "docs: release CHANGELOG.md for v${VERSION}" \
+              --body "Automated changelog stamp for production release v${VERSION}." \
+              --head "$BRANCH" \
+              --base main \
+              --label "automation" \
+              --label "skip-changelog"
+
+            # Post required commit status so the PR isn't blocked
+            COMMIT_SHA=$(git rev-parse HEAD)
+            gh api "repos/${{ github.repository }}/statuses/${COMMIT_SHA}" \
+              -f state="success" \
+              -f context="Check Workflow Status" \
+              -f description="Skipped — changelog-only PR"
+          }
 
       - name: Notify Discord
         if: ${{ inputs.channel != 'internal' }}

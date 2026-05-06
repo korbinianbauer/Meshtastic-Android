@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,29 +16,29 @@
  */
 package org.meshtastic.core.data.manager
 
-import io.mockk.every
-import io.mockk.mockk
+import dev.mokkery.MockMode
+import dev.mokkery.answering.returns
+import dev.mokkery.every
+import dev.mokkery.mock
 import kotlinx.coroutines.flow.MutableStateFlow
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
 import org.meshtastic.core.repository.FilterPrefs
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class MessageFilterImplTest {
+
     private lateinit var filterPrefs: FilterPrefs
-    private lateinit var filterEnabledFlow: MutableStateFlow<Boolean>
-    private lateinit var filterWordsFlow: MutableStateFlow<Set<String>>
+    private val filterEnabledFlow = MutableStateFlow(true)
+    private val filterWordsFlow = MutableStateFlow(setOf("spam", "bad"))
     private lateinit var filterService: MessageFilterImpl
 
-    @Before
+    @BeforeTest
     fun setup() {
-        filterEnabledFlow = MutableStateFlow(true)
-        filterWordsFlow = MutableStateFlow(setOf("spam", "bad"))
-        filterPrefs = mockk {
-            every { filterEnabled } returns filterEnabledFlow
-            every { filterWords } returns filterWordsFlow
-        }
+        filterPrefs = mock(MockMode.autofill)
+        every { filterPrefs.filterEnabled } returns filterEnabledFlow
+        every { filterPrefs.filterWords } returns filterWordsFlow
         filterService = MessageFilterImpl(filterPrefs)
     }
 

@@ -44,12 +44,22 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Permissions required for providing location (from phone GPS) to mesh -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:remove="android:maxSdkVersion" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:remove="android:maxSdkVersion" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!-- This permission is required for analytics - and soon the MQTT gateway -->
     <uses-permission android:name="android.permission.INTERNET" />
+
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!--
+      Android 17 (API 37) Local Network Protection: targetSdk=37 apps are blocked
+      from local-network access by default. Required for both NSD/mDNS device
+      discovery on the Connections screen and the built-in TAK Server's localhost
+      loopback binding. Requested at runtime via rememberRequestLocalNetworkPermission.
+      See: https://developer.android.com/privacy-and-security/local-network-permission
+    -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!--
       This permission is optional but recommended so we can be smart
@@ -119,6 +129,11 @@
             android:name="org.apache.http.legacy"
             android:required="false" />
 
+        <!-- Android Auto: surface MessagingStyle notifications on the car's head unit -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <!-- Default crash collection and analytics off until we (possibly) turn it on in application.onCreate -->
         <meta-data
             android:name="firebase_crashlytics_collection_enabled"
@@ -152,7 +167,7 @@
 
         <!-- This is the public API for doing mesh radio operations from android apps -->
         <service
-            android:name="org.meshtastic.app.service.MeshService"
+            android:name="org.meshtastic.core.service.MeshService"
             android:enabled="true"
             android:foregroundServiceType="connectedDevice|location"
             android:exported="true" tools:ignore="ExportedActivity">
@@ -218,6 +233,27 @@
                 <data android:pathPrefix="/V/" />
             </intent-filter>
 
+            <!-- App Links for modern RESTful navigation paths -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:host="meshtastic.org" />
+                
+                <data android:pathPrefix="/share" />
+                <data android:pathPrefix="/connections" />
+                <data android:pathPrefix="/map" />
+                <data android:pathPrefix="/messages" />
+                <data android:pathPrefix="/quickchat" />
+                <data android:pathPrefix="/nodes" />
+                <data android:pathPrefix="/settings" />
+                <data android:pathPrefix="/channels" />
+                <data android:pathPrefix="/firmware" />
+            </intent-filter>
+
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
@@ -228,7 +264,7 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
-        <receiver android:name="org.meshtastic.app.service.BootCompleteReceiver"
+        <receiver android:name="org.meshtastic.core.service.BootCompleteReceiver"
             android:exported="false">
             <!-- handle boot events -->
             <intent-filter>
@@ -252,19 +288,19 @@
                     android:path="com.geeksville.mesh" /> -->
             </intent-filter>
         </receiver>
-        <receiver android:name="org.meshtastic.app.service.ReplyReceiver" android:exported="false" />
-        <receiver android:name="org.meshtastic.app.service.MarkAsReadReceiver" android:exported="false" />
-        <receiver android:name="org.meshtastic.app.service.ReactionReceiver" android:exported="false" />
+        <receiver android:name="org.meshtastic.core.service.ReplyReceiver" android:exported="false" />
+        <receiver android:name="org.meshtastic.core.service.MarkAsReadReceiver" android:exported="false" />
+        <receiver android:name="org.meshtastic.core.service.ReactionReceiver" android:exported="false" />
 
         <receiver
-            android:name="org.meshtastic.app.widget.LocalStatsWidgetReceiver"
+            android:name="org.meshtastic.feature.widget.LocalStatsWidgetReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/local_stats_widget_info" />
+                android:resource="@xml/widget_local_stats_info" />
         </receiver>
 
         <!-- allow for plugin discovery -->

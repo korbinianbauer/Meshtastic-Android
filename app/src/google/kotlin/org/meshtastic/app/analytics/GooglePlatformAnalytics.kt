@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,11 @@ import com.datadog.android.log.LogsConfiguration
 import com.datadog.android.privacy.TrackingConsent
 import com.datadog.android.rum.GlobalRumMonitor
 import com.datadog.android.rum.Rum
+import com.datadog.android.rum.RumActionType
 import com.datadog.android.rum.RumConfiguration
+import com.datadog.android.sessionreplay.SessionReplay
+import com.datadog.android.sessionreplay.SessionReplayConfiguration
+import com.datadog.android.sessionreplay.TextAndInputPrivacy
 import com.datadog.android.trace.Trace
 import com.datadog.android.trace.TraceConfiguration
 import com.datadog.android.trace.opentelemetry.DatadogOpenTelemetry
@@ -68,7 +72,7 @@ import co.touchlab.kermit.Logger as KermitLogger
 class GooglePlatformAnalytics(private val context: Context, private val analyticsPrefs: AnalyticsPrefs) :
     PlatformAnalytics {
 
-    private val sampleRate = 100f.takeIf { BuildConfig.DEBUG } ?: 10f // For Datadog remote sample rate
+    private val sampleRate = 100f // Match Apple: 100% sampling for cross-platform DataDog comparison
 
     private var datadogLogger: Logger? = null
     private var isFirebaseInitialized = false
@@ -137,7 +141,7 @@ class GooglePlatformAnalytics(private val context: Context, private val analytic
         val configuration =
             Configuration.Builder(
                 clientToken = BuildConfig.datadogClientToken,
-                env = if (BuildConfig.DEBUG) "debug" else "release",
+                env = if (BuildConfig.DEBUG) "Local" else "Production",
                 variant = BuildConfig.FLAVOR,
             )
                 .useSite(DatadogSite.US5)
@@ -151,7 +155,7 @@ class GooglePlatformAnalytics(private val context: Context, private val analytic
         val rumConfiguration =
             RumConfiguration.Builder(BuildConfig.datadogApplicationId)
                 .trackAnonymousUser(true)
-                .trackBackgroundEvents(false) // Disable background noise
+                .trackBackgroundEvents(true) // Match Apple: track background events for cross-platform parity
                 .trackFrustrations(false) // Disable click-tracking based frustration detection
                 .trackLongTasks()
                 .trackNonFatalAnrs(true)
@@ -162,8 +166,18 @@ class GooglePlatformAnalytics(private val context: Context, private val analytic
         val logsConfig = LogsConfiguration.Builder().build()
         Logs.enable(logsConfig)
 
-        val traceConfig = TraceConfiguration.Builder().setNetworkInfoEnabled(false).build()
+        val traceConfig = TraceConfiguration.Builder().setNetworkInfoEnabled(true).build()
         Trace.enable(traceConfig)
+
+        // Session Replay for debug builds only, matching Apple's TestFlight-only gating.
+        // Masks all text inputs to protect message content.
+        if (BuildConfig.DEBUG) {
+            val sessionReplayConfig =
+                SessionReplayConfiguration.Builder(sampleRate)
+                    .setTextAndInputPrivacy(TextAndInputPrivacy.MASK_ALL_INPUTS)
+                    .build()
+            SessionReplay.enable(sessionReplayConfig)
+        }
 
         GlobalOpenTelemetry.set(DatadogOpenTelemetry(serviceName = SERVICE_NAME))
     }
@@ -233,6 +247,24 @@ class GooglePlatformAnalytics(private val context: Context, private val analytic
         GlobalRumMonitor.get().addAttribute("device_hardware", model)
     }
 
+    override fun trackConnect(
+        firmwareVersion: String?,
+        transportType: String?,
+        hardwareModel: String?,
+        nodes: Int,
+        connectionRestored: Boolean,
+    ) {
+        if (!Datadog.isInitialized() || !GlobalRumMonitor.isRegistered()) return
+        val attributes = buildMap {
+            firmwareVersion?.let { put("firmwareVersion", it) }
+            transportType?.let { put("transportType", it) }
+            hardwareModel?.let { put("hardwareModel", it) }
+            put("nodes", nodes)
+            if (connectionRestored) put("connectionRestored", true)
+        }
+        GlobalRumMonitor.get().addAction(RumActionType.CUSTOM, "connect", attributes)
+    }
+
     private val isGooglePlayAvailable: Boolean
         get() =
             GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(context).let {
@@ -298,13 +330,26 @@ class GooglePlatformAnalytics(private val context: Context, private val analytic
             val value = it.value
             when (value) {
                 is Double -> bundle.putDouble(it.name, value)
-                is Int -> bundle.putLong(it.name, value.toLong()) // Firebase expects Long for integer values in bundles
+
+                is Int -> bundle.putLong(it.name, value.toLong())
+
+                // Firebase expects Long for integer values in bundles
                 is Long -> bundle.putLong(it.name, value)
+
                 is Float -> bundle.putDouble(it.name, value.toDouble())
-                is String -> bundle.putString(it.name, value) // Explicitly handle String
+
+                is String -> bundle.putString(it.name, value)
+
+                // Explicitly handle String
                 else -> bundle.putString(it.name, value.toString()) // Fallback for other types
             }
-            KermitLogger.withTag(TAG).d { "Analytics: track $event (${it.name} : $value)" }
+            KermitLogger.withTag(TAG).d {
+                if (BuildConfig.DEBUG) {
+                    "Analytics: track $event (${it.name} : $value)"
+                } else {
+                    "Analytics: track $event (${it.name})"
+                }
+            }
         }
         Firebase.analytics.logEvent(event, bundle)
     }

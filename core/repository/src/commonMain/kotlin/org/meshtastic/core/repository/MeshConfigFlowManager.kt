@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,16 +16,13 @@
  */
 package org.meshtastic.core.repository
 
-import kotlinx.coroutines.CoroutineScope
 import org.meshtastic.proto.DeviceMetadata
+import org.meshtastic.proto.FileInfo
 import org.meshtastic.proto.MyNodeInfo
 import org.meshtastic.proto.NodeInfo
 
 /** Interface for managing the configuration flow, including local node info and metadata. */
 interface MeshConfigFlowManager {
-    /** Starts the manager with the given coroutine scope. */
-    fun start(scope: CoroutineScope)
-
     /** Handles received local node information. */
     fun handleMyInfo(myInfo: MyNodeInfo)
 
@@ -34,6 +31,14 @@ interface MeshConfigFlowManager {
 
     /** Handles received node information. */
     fun handleNodeInfo(info: NodeInfo)
+
+    /**
+     * Handles a [FileInfo] packet received during STATE_SEND_FILEMANIFEST.
+     *
+     * Each packet describes one file available on the device. Accumulated into [RadioConfigRepository.fileManifestFlow]
+     * and cleared at the start of each new handshake.
+     */
+    fun handleFileInfo(info: FileInfo)
 
     /** Returns the number of nodes received in the current stage. */
     val newNodeCount: Int

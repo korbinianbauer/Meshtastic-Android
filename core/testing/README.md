@@ -15,174 +15,99 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-# `:core:testing` — Shared Test Doubles and Utilities
+# `:core:testing`
 
-## Purpose
+## Module dependency graph
 
-The `:core:testing` module provides lightweight, reusable test doubles (fakes, builders, factories) and testing utilities for **all** KMP modules. This module **consolidates testing dependencies** into a single, well-controlled location to:
+<!--region graph-->
+```mermaid
+graph TB
+  :core:testing[testing]:::kmp-library
 
-- **Reduce duplication**: Shared fakes (e.g., `FakeNodeRepository`, `FakeRadioController`) used across multiple modules.
-- **Keep dependency graph clean**: All test doubles and libraries are defined once; modules depend on `:core:testing` instead of scattered test deps.
-- **Enable KMP-wide test patterns**: Every module (`commonTest`, `androidUnitTest`, JVM tests) can reuse the same fakes.
-- **Maintain purity**: Core business logic modules (e.g., `core:domain`, `core:data`) depend on `:core:testing` via `commonTest`, avoiding test-code leakage into production.
-
-## Dependency Strategy
+classDef android-application fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000;
+classDef android-application-compose fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000;
+classDef compose-desktop-application fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000;
+classDef android-feature fill:#FFD6A5,stroke:#000,stroke-width:2px,color:#000;
+classDef android-library fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
+classDef android-library-compose fill:#9BF6FF,stroke:#000,stroke-width:2px,color:#000;
+classDef android-test fill:#A0C4FF,stroke:#000,stroke-width:2px,color:#000;
+classDef jvm-library fill:#BDB2FF,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-feature fill:#FFD6A5,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-library-compose fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
+classDef kmp-library fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000;
+classDef unknown fill:#FFADAD,stroke:#000,stroke-width:2px,color:#000;
 
 ```
-┌─────────────────────────────────────┐
-│    core:testing                     │
-│  (only deps: core:model,            │
-│   core:repository, test libs)       │
-└──────────────┬──────────────────────┘
-               ↑
-               │ (commonTest dependency)
-        ┌──────┴─────────────┬────────────────────┐
-        │                    │                    │
-   core:domain          feature:messaging    feature:node
-   core:data            feature:settings     feature:firmware
-   (etc.)               (etc.)
-```
+<!--endregion-->
 
-### Key Design Rules
+## Overview
+The `:core:testing` module is a dedicated **Kotlin Multiplatform (KMP)** library that provides shared test fakes, doubles, rules, and utilities. It is designed to be consumed by the `commonTest` source sets of all other KMP modules to ensure consistent and unified testing behavior across the codebase.
 
-1. **`:core:testing` has NO dependencies on heavy modules**: It only depends on:
-   - `core:model` — Domain types (Node, User, etc.)
-   - `core:repository` — Interfaces (NodeRepository, etc.)
-   - Test libraries (`kotlin("test")`, `mockk`, `kotlinx.coroutines.test`, `turbine`, `junit`)
+By centralizing fakes and mocking utilities here, we prevent duplication of test setups and enforce a standard approach to testing ViewModels, Repositories, and pure domain logic.
 
-2. **No circular dependencies**: Modules that depend on `:core:testing` (in `commonTest`) cannot be dependencies of `:core:testing` itself.
+## Handling Platform-Specific Setup (Robolectric)
 
-3. **`:core:testing` is NOT part of the app bundle**: It's declared in `commonTest` sourceSet only, so it never appears in release APKs or final JARs.
+Some KMP modules interact with Android framework components (e.g., `android.net.Uri`, `androidx.room`, `DataStore`) that require Robolectric to run on the JVM. To maintain a unified test suite while providing platform-specific initialization, follow the **Subclassing Pattern**:
 
-## What's Included
-
-### Test Doubles (Fakes)
-
-#### `FakeRadioController`
-A no-op implementation of `RadioController` for unit tests. Tracks method calls and state changes.
+### 1. Create an Abstract Base Test in `commonTest`
+Place your test logic in an abstract class in `src/commonTest`. Do NOT use `@BeforeTest` for setup that requires platform-specific context.
 
 ```kotlin
-val radioController = FakeRadioController()
-radioController.setConnectionState(ConnectionState.Connected)
-assertEquals(1, radioController.sentPackets.size)
-```
-
-#### `FakeNodeRepository`
-An in-memory implementation of `NodeRepository` for isolated testing.
-
-```kotlin
-val nodeRepo = FakeNodeRepository()
-nodeRepo.setNodes(TestDataFactory.createTestNodes(5))
-assertEquals(5, nodeRepo.nodeDBbyNum.value.size)
-```
-
-### Test Builders & Factories
-
-#### `TestDataFactory`
-Factory methods for creating domain objects with sensible defaults.
-
-```kotlin
-val node = TestDataFactory.createTestNode(num = 42, longName = "Alice")
-val nodes = TestDataFactory.createTestNodes(10)
-```
-
-### Test Utilities
-
-#### Flow collection helper
-```kotlin
-val emissions = flow { emit(1); emit(2) }.toList()
-assertEquals(listOf(1, 2), emissions)
-```
-
-## Usage Examples
-
-### Testing a ViewModel (in `feature:messaging/src/commonTest`)
-
-```kotlin
-class MessageViewModelTest {
-    private val nodeRepository = FakeNodeRepository()
-
+abstract class CommonMyViewModelTest {
+    protected lateinit var viewModel: MyViewModel
+    
+    // Call this from subclasses
+    fun setupRepo() {
+        // ... common setup logic
+    }
+    
     @Test
-    fun testLoadsNodesCorrectly() = runTest {
-        nodeRepository.setNodes(TestDataFactory.createTestNodes(3))
-        val viewModel = createViewModel(nodeRepository)
-        assertEquals(3, viewModel.nodeCount.value)
-    }
+    fun testLogic() { /* ... */ }
 }
 ```
 
-### Testing a UseCase (in `core:domain/src/commonTest`)
+### 2. Implement the JVM Subclass in `jvmTest`
+A simple subclass is usually enough for pure JVM targets.
 
 ```kotlin
-class SendMessageUseCaseTest {
-    private val radioController = FakeRadioController()
-
-    @Test
-    fun testSendsPacket() = runTest {
-        val useCase = SendMessageUseCase(radioController)
-        useCase.sendMessage(testPacket)
-        assertEquals(1, radioController.sentPackets.size)
+class MyViewModelTest : CommonMyViewModelTest() {
+    @BeforeTest
+    fun setup() {
+        setupRepo()
     }
 }
 ```
 
-## Adding New Test Doubles
-
-When adding a new fake to `:core:testing`:
-
-1. **Implement the interface** from `core:model` or `core:repository`.
-2. **Track side effects** (e.g., `sentPackets`, `calledMethods`) for test assertions.
-3. **Provide test helpers** (e.g., `setNodes()`, `clear()`) to manipulate state.
-4. **Document with examples** in the class KDoc.
-
-Example:
+### 3. Implement the Android Subclass in `androidHostTest`
+Use `@RunWith(RobolectricTestRunner::class)` and call `setupTestContext()` to initialize `ContextServices.app`.
 
 ```kotlin
-/**
- * A test double for [SomeRepository].
- */
-class FakeSomeRepository : SomeRepository {
-    val callHistory = mutableListOf<String>()
-
-    override suspend fun doSomething(value: String) {
-        callHistory.add(value)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class MyViewModelTest : CommonMyViewModelTest() {
+    @BeforeTest
+    fun setup() {
+        setupTestContext() // From :core:testing, initializes Robolectric context
+        setupRepo()
     }
-
-    // Test helpers
-    fun getCallCount() = callHistory.size
-    fun clear() = callHistory.clear()
 }
 ```
 
-## Dependency Maintenance
+## Key Components
 
-### When adding a new module:
-- If it has `commonTest` tests, add `implementation(projects.core.testing)` to its `commonTest.dependencies`.
-- Do NOT add heavy modules (e.g., `core:database`) to `:core:testing`'s dependencies.
+- **Test Doubles / Fakes**: Provides in-memory implementations of core repositories (e.g., `FakeNodeRepository`, `FakeMeshLogRepository`) to isolate components under test.
+- **Coroutines Testing**: Provides dispatchers and test rules that replace the main dispatcher with `TestDispatcher` to allow time-control and synchronous execution of coroutines in tests.
+- **Mokkery Support**: Integrated with the Mokkery compiler plugin to provide robust and unified mocking capabilities in `commonTest`.
 
-### When a test needs a mock:
-- Check `:core:testing` first for an existing fake.
-- If none exists, consider adding it there (if it's reusable) vs. using `mockk()` inline.
+## Usage
+Add this module to your `commonTest` source set dependencies in your KMP module's `build.gradle.kts`:
 
-### When updating interfaces:
-- Update corresponding fakes in `:core:testing` to match new method signatures.
-- Keep fakes no-op; don't replicate business logic.
-
-## Files
-
+```kotlin
+kotlin {
+    sourceSets {
+        commonTest.dependencies {
+            implementation(projects.core.testing)
+        }
+    }
+}
 ```
-core/testing/
-├── build.gradle.kts              # Lightweight, minimal dependencies
-├── README.md                      # This file
-└── src/commonMain/kotlin/org/meshtastic/core/testing/
-    ├── FakeRadioController.kt     # RadioController test double
-    ├── FakeNodeRepository.kt      # NodeRepository test double
-    └── TestDataFactory.kt         # Builders and factories
-```
-
-## See Also
-
-- `AGENTS.md` §3B: KMP platform purity guidelines (relevant for test code).
-- `docs/kmp-status.md`: KMP module status and targets.
-- `.github/copilot-instructions.md`: Build and test commands.
-

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,43 +16,58 @@
  */
 package org.meshtastic.core.testing
 
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.meshtastic.core.model.ConnectionState
 import org.meshtastic.core.model.DataPacket
+import org.meshtastic.core.model.Position
 import org.meshtastic.core.model.RadioController
+import org.meshtastic.proto.Channel
 import org.meshtastic.proto.ClientNotification
+import org.meshtastic.proto.Config
+import org.meshtastic.proto.ModuleConfig
+import org.meshtastic.proto.User
 
 /**
  * A test double for [RadioController] that provides a no-op implementation and tracks calls for assertions in tests.
- *
- * Use this in place of mocking the entire RadioController interface when you need fine-grained control over connection
- * state and packet tracking.
- *
- * Example:
- * ```kotlin
- * val radioController = FakeRadioController()
- * radioController.setConnectionState(ConnectionState.Connected)
- * // ... perform test ...
- * assertEquals(1, radioController.sentPackets.size)
- * ```
  */
 @Suppress("TooManyFunctions", "EmptyFunctionBlock")
-class FakeRadioController : RadioController {
+class FakeRadioController :
+    BaseFake(),
+    RadioController {
 
-    // Mutable state flows so we can manipulate them in our tests
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Connected)
+    /** Canonical app-level connection state, mirroring [ServiceRepository][connectionState] semantics. */
+    private val _connectionState = mutableStateFlow<ConnectionState>(ConnectionState.Connected)
     override val connectionState: StateFlow<ConnectionState> = _connectionState
 
-    private val _clientNotification = MutableStateFlow<ClientNotification?>(null)
+    private val _clientNotification = mutableStateFlow<ClientNotification?>(null)
     override val clientNotification: StateFlow<ClientNotification?> = _clientNotification
 
-    // Track sent packets to assert in tests
     val sentPackets = mutableListOf<DataPacket>()
     val favoritedNodes = mutableListOf<Int>()
     val sentSharedContacts = mutableListOf<Int>()
+    var throwOnSend: Boolean = false
+    var lastSetDeviceAddress: String? = null
+    var beginEditSettingsCalled = false
+    var commitEditSettingsCalled = false
+    var startProvideLocationCalled = false
+    var stopProvideLocationCalled = false
+
+    init {
+        registerResetAction {
+            sentPackets.clear()
+            favoritedNodes.clear()
+            sentSharedContacts.clear()
+            throwOnSend = false
+            lastSetDeviceAddress = null
+            beginEditSettingsCalled = false
+            commitEditSettingsCalled = false
+            startProvideLocationCalled = false
+            stopProvideLocationCalled = false
+        }
+    }
 
     override suspend fun sendMessage(packet: DataPacket) {
+        if (throwOnSend) error("Fake send failure")
         sentPackets.add(packet)
     }
 
@@ -64,23 +79,24 @@ class FakeRadioController : RadioController {
         favoritedNodes.add(nodeNum)
     }
 
-    override suspend fun sendSharedContact(nodeNum: Int) {
+    override suspend fun sendSharedContact(nodeNum: Int): Boolean {
         sentSharedContacts.add(nodeNum)
+        return true
     }
 
-    override suspend fun setLocalConfig(config: org.meshtastic.proto.Config) {}
+    override suspend fun setLocalConfig(config: Config) {}
 
-    override suspend fun setLocalChannel(channel: org.meshtastic.proto.Channel) {}
+    override suspend fun setLocalChannel(channel: Channel) {}
 
-    override suspend fun setOwner(destNum: Int, user: org.meshtastic.proto.User, packetId: Int) {}
+    override suspend fun setOwner(destNum: Int, user: User, packetId: Int) {}
 
-    override suspend fun setConfig(destNum: Int, config: org.meshtastic.proto.Config, packetId: Int) {}
+    override suspend fun setConfig(destNum: Int, config: Config, packetId: Int) {}
 
-    override suspend fun setModuleConfig(destNum: Int, config: org.meshtastic.proto.ModuleConfig, packetId: Int) {}
+    override suspend fun setModuleConfig(destNum: Int, config: ModuleConfig, packetId: Int) {}
 
-    override suspend fun setRemoteChannel(destNum: Int, channel: org.meshtastic.proto.Channel, packetId: Int) {}
+    override suspend fun setRemoteChannel(destNum: Int, channel: Channel, packetId: Int) {}
 
-    override suspend fun setFixedPosition(destNum: Int, position: org.meshtastic.core.model.Position) {}
+    override suspend fun setFixedPosition(destNum: Int, position: Position) {}
 
     override suspend fun setRingtone(destNum: Int, ringtone: String) {}
 
@@ -114,7 +130,7 @@ class FakeRadioController : RadioController {
 
     override suspend fun removeByNodenum(packetId: Int, nodeNum: Int) {}
 
-    override suspend fun requestPosition(destNum: Int, currentPosition: org.meshtastic.core.model.Position) {}
+    override suspend fun requestPosition(destNum: Int, currentPosition: Position) {}
 
     override suspend fun requestUserInfo(destNum: Int) {}
 
@@ -124,17 +140,27 @@ class FakeRadioController : RadioController {
 
     override suspend fun requestNeighborInfo(requestId: Int, destNum: Int) {}
 
-    override suspend fun beginEditSettings(destNum: Int) {}
+    override suspend fun beginEditSettings(destNum: Int) {
+        beginEditSettingsCalled = true
+    }
 
-    override suspend fun commitEditSettings(destNum: Int) {}
+    override suspend fun commitEditSettings(destNum: Int) {
+        commitEditSettingsCalled = true
+    }
 
     override fun getPacketId(): Int = 1
 
-    override fun startProvideLocation() {}
+    override fun startProvideLocation() {
+        startProvideLocationCalled = true
+    }
 
-    override fun stopProvideLocation() {}
+    override fun stopProvideLocation() {
+        stopProvideLocationCalled = true
+    }
 
-    override fun setDeviceAddress(address: String) {}
+    override fun setDeviceAddress(address: String) {
+        lastSetDeviceAddress = address
+    }
 
     // --- Helper methods for testing ---
 

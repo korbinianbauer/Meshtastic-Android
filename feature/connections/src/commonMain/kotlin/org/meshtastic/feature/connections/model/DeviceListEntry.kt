@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,14 +39,17 @@ sealed class DeviceListEntry(
     override fun toString(): String =
         "DeviceListEntry(name=${name.anonymize}, addr=${address.anonymize}, bonded=$bonded, hasNode=${node != null})"
 
-    data class Ble(val device: BleDevice, override val node: Node? = null) :
-        DeviceListEntry(
-            name = device.name ?: "unnamed-${device.address}",
-            fullAddress = "x${device.address}",
-            bonded = device.isBonded,
-            node = node,
-        ) {
-        override fun copy(node: Node?): Ble = copy(device = device, node = node)
+    data class Ble(
+        val device: BleDevice,
+        override val bonded: Boolean = device.isBonded,
+        override val node: Node? = null,
+    ) : DeviceListEntry(
+        name = device.name ?: "unnamed-${device.address}",
+        fullAddress = "x${device.address}",
+        bonded = bonded,
+        node = node,
+    ) {
+        override fun copy(node: Node?): Ble = copy(device = device, bonded = bonded, node = node)
     }
 
     data class Usb(

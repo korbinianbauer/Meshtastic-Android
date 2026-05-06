@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@ fun interface ComposableContent {
  * direct dependencies on UI components.
  */
 @Single
-class AlertManager {
+open class AlertManager {
     data class AlertData(
         val title: String? = null,
         val titleRes: StringResource? = null,
@@ -52,9 +52,9 @@ class AlertManager {
     )
 
     private val _currentAlert = MutableStateFlow<AlertData?>(null)
-    val currentAlert = _currentAlert.asStateFlow()
+    open val currentAlert = _currentAlert.asStateFlow()
 
-    fun showAlert(
+    open fun showAlert(
         title: String? = null,
         titleRes: StringResource? = null,
         message: String? = null,
@@ -97,7 +97,7 @@ class AlertManager {
             )
     }
 
-    fun dismissAlert() {
+    open fun dismissAlert() {
         _currentAlert.value = null
     }
 }

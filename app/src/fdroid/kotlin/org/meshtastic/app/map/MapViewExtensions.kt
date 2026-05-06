@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -124,17 +124,17 @@ fun MapView.addPolyline(density: Density, geoPoints: List<GeoPoint>, onClick: ()
     return polyline
 }
 
-fun MapView.addPositionMarkers(positions: List<Position>, onClick: () -> Unit): List<Marker> {
+fun MapView.addPositionMarkers(positions: List<Position>, onClick: (Int) -> Unit): List<Marker> {
     val navIcon = ContextCompat.getDrawable(context, R.drawable.ic_map_navigation)
     val markers =
-        positions.map {
+        positions.map { pos ->
             Marker(this).apply {
                 icon = navIcon
-                rotation = ((it.ground_track ?: 0) * 1e-5).toFloat()
+                rotation = ((pos.ground_track ?: 0) * 1e-5).toFloat()
                 setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-                position = GeoPoint((it.latitude_i ?: 0) * 1e-7, (it.longitude_i ?: 0) * 1e-7)
+                position = GeoPoint((pos.latitude_i ?: 0) * 1e-7, (pos.longitude_i ?: 0) * 1e-7)
                 setOnMarkerClickListener { _, _ ->
-                    onClick()
+                    onClick(pos.time)
                     true
                 }
             }

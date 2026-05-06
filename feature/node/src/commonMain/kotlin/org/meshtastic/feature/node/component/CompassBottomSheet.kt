@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,9 +25,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.GpsFixed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +52,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.stringResource
+import org.meshtastic.core.common.util.formatString
 import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.compass_bearing
 import org.meshtastic.core.resources.compass_bearing_na
@@ -69,8 +67,12 @@ import org.meshtastic.core.resources.compass_uncertainty_unknown
 import org.meshtastic.core.resources.elevation_suffix
 import org.meshtastic.core.resources.exchange_position
 import org.meshtastic.core.resources.last_position_update
+import org.meshtastic.core.ui.icon.ErrorOutline
+import org.meshtastic.core.ui.icon.MeshtasticIcons
+import org.meshtastic.core.ui.icon.MyLocation
 import org.meshtastic.feature.node.compass.CompassUiState
 import org.meshtastic.feature.node.compass.CompassWarning
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -126,7 +128,7 @@ fun CompassSheetContent(
                     Text(
                         text =
                         uiState.errorRadiusText?.let { radius ->
-                            val angle = uiState.angularErrorDeg?.let { "%.0f°".format(it) } ?: "?"
+                            val angle = uiState.angularErrorDeg?.let { formatString("%.0f°", it) } ?: "?"
                             stringResource(Res.string.compass_uncertainty, radius, angle)
                         } ?: stringResource(Res.string.compass_uncertainty_unknown),
                         style = MaterialTheme.typography.bodyMedium,
@@ -150,7 +152,7 @@ fun CompassSheetContent(
             )
             // Quick way to re-request a fresh fix without leaving the compass sheet
             Button(onClick = onRequestPosition, modifier = Modifier.fillMaxWidth()) {
-                Icon(imageVector = Icons.Rounded.GpsFixed, contentDescription = null)
+                Icon(imageVector = MeshtasticIcons.MyLocation, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(Res.string.exchange_position))
             }
@@ -187,7 +189,7 @@ private fun WarningList(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.ErrorOutline,
+                        imageVector = MeshtasticIcons.ErrorOutline,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -202,13 +204,13 @@ private fun WarningList(
 
         if (warnings.contains(CompassWarning.NO_LOCATION_PERMISSION)) {
             Button(onClick = onRequestPermission, modifier = Modifier.fillMaxWidth()) {
-                Icon(imageVector = Icons.Rounded.GpsFixed, contentDescription = null)
+                Icon(imageVector = MeshtasticIcons.MyLocation, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(Res.string.compass_no_location_permission))
             }
         } else if (warnings.contains(CompassWarning.LOCATION_DISABLED)) {
             Button(onClick = onOpenLocationSettings, modifier = Modifier.fillMaxWidth()) {
-                Icon(imageVector = Icons.Rounded.GpsFixed, contentDescription = null)
+                Icon(imageVector = MeshtasticIcons.MyLocation, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = stringResource(Res.string.compass_location_disabled))
             }
@@ -279,7 +281,7 @@ private fun CompassDial(
                         else -> 1.dp.toPx()
                     }
 
-                val angle = Math.toRadians(deg.toDouble())
+                val angle = (deg * PI / 180.0)
                 val outer = Offset(center.x + radius * sin(angle).toFloat(), center.y - radius * cos(angle).toFloat())
                 val inner =
                     Offset(
@@ -310,7 +312,7 @@ private fun CompassDial(
                 )
 
             for ((label, deg, color) in cardinals) {
-                val angle = Math.toRadians(deg.toDouble())
+                val angle = (deg * PI / 180.0)
                 val x = center.x + cardinalRadius * sin(angle).toFloat()
                 val y = center.y - cardinalRadius * cos(angle).toFloat()
 
@@ -327,7 +329,7 @@ private fun CompassDial(
             // Degree labels
             val degRadius = radius * 0.72f
             for (d in 0 until 360 step 30) {
-                val angle = Math.toRadians(d.toDouble())
+                val angle = (d * PI / 180.0)
                 val x = center.x + degRadius * sin(angle).toFloat()
                 val y = center.y - degRadius * cos(angle).toFloat()
 
@@ -363,8 +365,8 @@ private fun CompassDial(
 
                 // Cone edge lines for clarity
                 val edgeRadius = arcRadius
-                val startRad = Math.toRadians(startAngleNorth.toDouble())
-                val endRad = Math.toRadians((startAngleNorth + sweep).toDouble())
+                val startRad = (startAngleNorth * PI / 180.0)
+                val endRad = ((startAngleNorth + sweep) * PI / 180.0)
                 val startEnd =
                     Offset(
                         center.x + edgeRadius * sin(startRad).toFloat(),
@@ -376,7 +378,7 @@ private fun CompassDial(
                 drawLine(color = faint, start = center, end = endEnd, strokeWidth = 6f, cap = StrokeCap.Round)
             }
             if (bearingForDraw != null) {
-                val angle = Math.toRadians(bearingForDraw.toDouble())
+                val angle = (bearingForDraw * PI / 180.0)
                 val dot =
                     Offset(
                         center.x + (radius * 0.95f) * sin(angle).toFloat(),

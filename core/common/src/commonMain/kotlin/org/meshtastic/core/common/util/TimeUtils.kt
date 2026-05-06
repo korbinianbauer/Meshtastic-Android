@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,3 @@ val systemTimeZone: TimeZone
 
 /** Converts these milliseconds to an [Instant]. */
 fun Long.toInstant(): Instant = Instant.fromEpochMilliseconds(this)
-
-/** Converts these seconds to an [Instant]. */
-fun Int.secondsToInstant(): Instant = Instant.fromEpochSeconds(this.toLong())

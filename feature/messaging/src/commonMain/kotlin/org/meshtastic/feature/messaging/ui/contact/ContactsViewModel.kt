@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,13 +21,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
+import org.meshtastic.core.common.util.ioDispatcher
 import org.meshtastic.core.model.Contact
 import org.meshtastic.core.model.ContactSettings
 import org.meshtastic.core.model.DataPacket
@@ -37,6 +36,7 @@ import org.meshtastic.core.repository.NodeRepository
 import org.meshtastic.core.repository.PacketRepository
 import org.meshtastic.core.repository.RadioConfigRepository
 import org.meshtastic.core.repository.ServiceRepository
+import org.meshtastic.core.ui.viewmodel.safeLaunch
 import org.meshtastic.core.ui.viewmodel.stateInWhileSubscribed
 import org.meshtastic.proto.ChannelSet
 import kotlin.collections.map as collectionsMap
@@ -139,14 +139,16 @@ class ContactsViewModel(
 
                 packetRepository.getContactsPaged().map { pagingData ->
                     pagingData.map { packetData: DataPacket ->
-                        val contactKey =
-                            "${packetData.channel}${packetData.to}" // This might be wrong, need to check how contactKey
-                        // is derived in PagingSource
-
                         // Determine if this is my message (originated on this device)
                         val fromLocal =
                             (packetData.from == DataPacket.ID_LOCAL || (myId != null && packetData.from == myId))
                         val toBroadcast = packetData.to == DataPacket.ID_BROADCAST
+
+                        // Reconstruct contactKey exactly as rememberDataPacket() computes it:
+                        // For outgoing or broadcast: use the "to" field (recipient / ^all)
+                        // For incoming DMs: use the "from" field (the other party)
+                        val contactId = if (fromLocal || toBroadcast) packetData.to else packetData.from
+                        val contactKey = "${packetData.channel}$contactId"
 
                         // grab usernames from NodeInfo
                         val userId = if (fromLocal) packetData.to else packetData.from
@@ -161,18 +163,15 @@ class ContactsViewModel(
                                 user.long_name
                             }
 
-                        val contactKeyComputed =
-                            if (toBroadcast) "${packetData.channel}${DataPacket.ID_BROADCAST}" else contactKey
-
                         Contact(
-                            contactKey = contactKeyComputed,
+                            contactKey = contactKey,
                             shortName = if (toBroadcast) packetData.channel.toString() else shortName,
                             longName = longName,
                             lastMessageTime = if (packetData.time != 0L) packetData.time else null,
                             lastMessageText = if (fromLocal) packetData.text else "$shortName: ${packetData.text}",
-                            unreadCount = packetRepository.getUnreadCount(contactKeyComputed),
-                            messageCount = packetRepository.getMessageCount(contactKeyComputed),
-                            isMuted = settings[contactKeyComputed]?.isMuted == true,
+                            unreadCount = packetRepository.getUnreadCount(contactKey),
+                            messageCount = packetRepository.getMessageCount(contactKey),
+                            isMuted = settings[contactKey]?.isMuted == true,
                             isUnmessageable = user.is_unmessagable ?: false,
                             nodeColors =
                             if (!toBroadcast) {
@@ -189,17 +188,20 @@ class ContactsViewModel(
     fun getNode(userId: String?) = nodeRepository.getNode(userId ?: DataPacket.ID_BROADCAST)
 
     fun deleteContacts(contacts: List<String>) =
-        viewModelScope.launch(Dispatchers.IO) { packetRepository.deleteContacts(contacts) }
+        safeLaunch(context = ioDispatcher, tag = "deleteContacts") { packetRepository.deleteContacts(contacts) }
 
-    fun markAllAsRead() = viewModelScope.launch(Dispatchers.IO) { packetRepository.clearAllUnreadCounts() }
+    fun markAllAsRead() =
+        safeLaunch(context = ioDispatcher, tag = "markAllAsRead") { packetRepository.clearAllUnreadCounts() }
 
     fun setMuteUntil(contacts: List<String>, until: Long) =
-        viewModelScope.launch(Dispatchers.IO) { packetRepository.setMuteUntil(contacts, until) }
+        safeLaunch(context = ioDispatcher, tag = "setMuteUntil") { packetRepository.setMuteUntil(contacts, until) }
 
     fun getContactSettings() = packetRepository.getContactSettings()
 
     fun setContactFilteringDisabled(contactKey: String, disabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) { packetRepository.setContactFilteringDisabled(contactKey, disabled) }
+        safeLaunch(context = ioDispatcher, tag = "setContactFilteringDisabled") {
+            packetRepository.setContactFilteringDisabled(contactKey, disabled)
+        }
     }
 
     /**

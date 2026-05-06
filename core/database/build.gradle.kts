@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,6 +35,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.androidx.sqlite.bundled)
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.okio)
 
             api(projects.core.common)
             implementation(projects.core.di)
@@ -46,19 +48,17 @@ kotlin {
             implementation(libs.kermit)
         }
         commonTest.dependencies {
-            implementation(kotlin("test"))
+            implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutines.test)
             implementation(libs.androidx.room.testing)
         }
-        androidMain.dependencies { implementation(libs.javax.inject) }
 
         val androidHostTest by getting {
             dependencies {
+                implementation(libs.androidx.sqlite.bundled)
                 implementation(libs.androidx.room.testing)
-                implementation(libs.androidx.test.core)
                 implementation(libs.androidx.test.ext.junit)
                 implementation(libs.junit)
-                implementation(libs.robolectric)
             }
         }
         val androidDeviceTest by getting {
@@ -73,6 +73,7 @@ kotlin {
 
 dependencies {
     "kspJvm"(libs.androidx.room.compiler)
+    "kspJvmTest"(libs.androidx.room.compiler)
     "kspAndroidHostTest"(libs.androidx.room.compiler)
     "kspAndroidDeviceTest"(libs.androidx.room.compiler)
 }

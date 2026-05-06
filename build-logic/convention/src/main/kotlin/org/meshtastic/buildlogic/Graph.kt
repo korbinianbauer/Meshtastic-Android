@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+@file:Suppress("MatchingDeclarationName")
 
 package org.meshtastic.buildlogic
 
@@ -35,9 +36,7 @@ import org.gradle.kotlin.dsl.withType
 import org.meshtastic.buildlogic.PluginType.Unknown
 import kotlin.text.RegexOption.DOT_MATCHES_ALL
 
-/**
- * Declaration order is important, as only the first match will be retained.
- */
+/** Declaration order is important, as only the first match will be retained. */
 internal enum class PluginType(val id: String, val ref: String, val style: String) {
     AndroidApplication(
         id = "meshtastic.android.application",
@@ -50,7 +49,7 @@ internal enum class PluginType(val id: String, val ref: String, val style: Strin
         style = "fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000",
     ),
     ComposeDesktopApplication(
-        id = "org.jetbrains.compose",
+        id = "?desktop",
         ref = "compose-desktop-application",
         style = "fill:#CAFFBF,stroke:#000,stroke-width:2px,color:#000",
     ),
@@ -79,60 +78,81 @@ internal enum class PluginType(val id: String, val ref: String, val style: Strin
         ref = "jvm-library",
         style = "fill:#BDB2FF,stroke:#000,stroke-width:2px,color:#000",
     ),
+    KmpFeature(
+        id = "meshtastic.kmp.feature",
+        ref = "kmp-feature",
+        style = "fill:#FFD6A5,stroke:#000,stroke-width:2px,color:#000",
+    ),
+    KmpLibraryCompose(
+        id = "meshtastic.kmp.library.compose",
+        ref = "kmp-library-compose",
+        style = "fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000",
+    ),
     KmpLibrary(
         id = "meshtastic.kmp.library",
         ref = "kmp-library",
         style = "fill:#FFC1CC,stroke:#000,stroke-width:2px,color:#000",
     ),
-    Unknown(
-        id = "?",
-        ref = "unknown",
-        style = "fill:#FFADAD,stroke:#000,stroke-width:2px,color:#000",
-    ),
+    Unknown(id = "?", ref = "unknown", style = "fill:#FFADAD,stroke:#000,stroke-width:2px,color:#000"),
 }
 
-/**
- * Optimized and Isolated Projects compatible graph configuration.
- */
-internal fun Project.configureGraphTasks() {
+/** Optimized and Isolated Projects compatible graph configuration. */
+fun Project.configureGraphTasks() {
     if (!buildFile.exists()) return
 
-    val supportedConfigurations = providers.gradleProperty("graph.supportedConfigurations")
-        .map { it.split(",").toSet() }
-        .orElse(setOf("api", "implementation", "baselineProfile", "testedApks"))
+    val supportedConfigurations =
+        providers
+            .gradleProperty("graph.supportedConfigurations")
+            .map { it.split(",").toSet() }
+            .orElse(setOf("api", "implementation", "baselineProfile", "testedApks"))
 
     val targetProjectPath = path
 
-    val dumpTask = tasks.register<GraphDumpTask>("graphDump") {
-        projectPath.set(targetProjectPath)
-        
-        dependenciesData.set(providers.provider {
-            val deps = mutableMapOf<String, Set<Pair<String, String>>>()
-            val projectDeps = mutableSetOf<Pair<String, String>>()
-            configurations.filter { it.name in supportedConfigurations.get() }.forEach { config ->
-                config.dependencies.withType<ProjectDependency>().forEach { dep ->
-                    projectDeps.add(config.name to dep.path)
-                }
-            }
-            deps[targetProjectPath] = projectDeps
-            deps
-        })
+    val dumpTask =
+        tasks.register<GraphDumpTask>("graphDump") {
+            projectPath.set(targetProjectPath)
 
-        pluginsData.set(providers.provider {
-            val projectPlugins = mutableMapOf<String, PluginType>()
-            val type = when {
-                pluginManager.hasPlugin("meshtastic.android.application") || pluginManager.hasPlugin("meshtastic.android.application.compose") -> PluginType.AndroidApplication
-                targetProjectPath.startsWith(":desktop") -> PluginType.ComposeDesktopApplication
-                targetProjectPath.startsWith(":feature:") -> PluginType.AndroidFeature
-                else -> PluginType.entries.firstOrNull { pluginManager.hasPlugin(it.id) } ?: Unknown
-            }
-            projectPlugins[targetProjectPath] = type
-            projectPlugins
-        })
+            dependenciesData.set(
+                providers.provider {
+                    val deps = mutableMapOf<String, Set<Pair<String, String>>>()
+                    val projectDeps = mutableSetOf<Pair<String, String>>()
+                    configurations
+                        .filter { it.name in supportedConfigurations.get() }
+                        .forEach { config ->
+                            config.dependencies.withType<ProjectDependency>().forEach { dep ->
+                                projectDeps.add(config.name to dep.path)
+                            }
+                        }
+                    deps[targetProjectPath] = projectDeps
+                    deps
+                },
+            )
 
-        output.set(layout.buildDirectory.file("mermaid/graph.txt"))
-        legend.set(layout.buildDirectory.file("mermaid/legend.txt"))
-    }
+            pluginsData.set(
+                providers.provider {
+                    val projectPlugins = mutableMapOf<String, PluginType>()
+                    val type =
+                        when {
+                            pluginManager.hasPlugin("meshtastic.android.application") ||
+                                pluginManager.hasPlugin("meshtastic.android.application.compose") ->
+                                PluginType.AndroidApplication
+
+                            targetProjectPath.startsWith(":desktop") -> PluginType.ComposeDesktopApplication
+
+                            pluginManager.hasPlugin("meshtastic.kmp.feature") -> PluginType.KmpFeature
+
+                            targetProjectPath.startsWith(":feature:") -> PluginType.AndroidFeature
+
+                            else -> PluginType.entries.firstOrNull { pluginManager.hasPlugin(it.id) } ?: Unknown
+                        }
+                    projectPlugins[targetProjectPath] = type
+                    projectPlugins
+                },
+            )
+
+            output.set(layout.buildDirectory.file("mermaid/graph.txt"))
+            legend.set(layout.buildDirectory.file("mermaid/legend.txt"))
+        }
 
     tasks.register<GraphUpdateTask>("graphUpdate") {
         projectPath.set(targetProjectPath)
@@ -145,20 +165,15 @@ internal fun Project.configureGraphTasks() {
 @CacheableTask
 private abstract class GraphDumpTask : DefaultTask() {
 
-    @get:Input
-    abstract val projectPath: Property<String>
+    @get:Input abstract val projectPath: Property<String>
 
-    @get:Input
-    abstract val dependenciesData: MapProperty<String, Set<Pair<String, String>>>
+    @get:Input abstract val dependenciesData: MapProperty<String, Set<Pair<String, String>>>
 
-    @get:Input
-    abstract val pluginsData: MapProperty<String, PluginType>
+    @get:Input abstract val pluginsData: MapProperty<String, PluginType>
 
-    @get:OutputFile
-    abstract val output: RegularFileProperty
+    @get:OutputFile abstract val output: RegularFileProperty
 
-    @get:OutputFile
-    abstract val legend: RegularFileProperty
+    @get:OutputFile abstract val legend: RegularFileProperty
 
     @TaskAction
     operator fun invoke() {
@@ -171,17 +186,20 @@ private abstract class GraphDumpTask : DefaultTask() {
         val currentProject = projectPath.get()
         val projectPlugins = pluginsData.get()
         val projectDeps = dependenciesData.get()[currentProject] ?: emptySet()
-        
-        appendLine("  $currentProject[${currentProject.substringAfterLast(":")}]:::${projectPlugins[currentProject]?.ref}")
-        
+
+        appendLine(
+            "  $currentProject[${currentProject.substringAfterLast(":")}]:::${projectPlugins[currentProject]?.ref}",
+        )
+
         projectDeps.forEach { (config, depPath) ->
-            val link = when (config) {
-                "api" -> "-->"
-                else -> "-.->"
-            }
+            val link =
+                when (config) {
+                    "api" -> "-->"
+                    else -> "-.->"
+                }
             appendLine("  $currentProject $link $depPath")
         }
-        
+
         appendLine()
         PluginType.entries.forEach { appendLine("classDef ${it.ref} ${it.style};") }
     }
@@ -193,6 +211,7 @@ private abstract class GraphDumpTask : DefaultTask() {
         appendLine("    L1[Application]:::android-application")
         appendLine("    L2[Library]:::android-library")
         appendLine("    L3[Feature]:::android-feature")
+        appendLine("    L4[KMP Library]:::kmp-library")
         appendLine("  end")
         PluginType.entries.forEach { appendLine("classDef ${it.ref} ${it.style};") }
     }
@@ -200,16 +219,17 @@ private abstract class GraphDumpTask : DefaultTask() {
 
 @CacheableTask
 private abstract class GraphUpdateTask : DefaultTask() {
-    @get:Input
-    abstract val projectPath: Property<String>
+    @get:Input abstract val projectPath: Property<String>
+
     @get:InputFile
     @get:PathSensitive(NONE)
     abstract val input: RegularFileProperty
+
     @get:InputFile
     @get:PathSensitive(NONE)
     abstract val legend: RegularFileProperty
-    @get:OutputFile
-    abstract val output: RegularFileProperty
+
+    @get:OutputFile abstract val output: RegularFileProperty
 
     @TaskAction
     fun update() {
@@ -217,10 +237,11 @@ private abstract class GraphUpdateTask : DefaultTask() {
         if (!readme.exists()) return
         val mermaid = input.get().asFile.readText()
         val currentContent = readme.readText()
-        val newContent = currentContent.replace(
-            Regex("<!--region graph-->.*?<!--endregion-->", DOT_MATCHES_ALL), 
-            "<!--region graph-->\n```mermaid\n$mermaid\n```\n<!--endregion-->"
-        )
+        val newContent =
+            currentContent.replace(
+                Regex("<!--region graph-->.*?<!--endregion-->", DOT_MATCHES_ALL),
+                "<!--region graph-->\n```mermaid\n$mermaid\n```\n<!--endregion-->",
+            )
         if (currentContent != newContent) {
             readme.writeText(newContent)
         }

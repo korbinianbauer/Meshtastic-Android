@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,13 +19,12 @@ package org.meshtastic.feature.intro
 import android.Manifest
 import android.os.Build
 import androidx.compose.runtime.Composable
-import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
-import androidx.navigation3.ui.NavDisplay
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionState
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.accompanist.permissions.rememberPermissionState
+import org.meshtastic.core.ui.component.MeshtasticNavDisplay
 
 /**
  * Main application introduction screen. This Composable hosts the navigation flow and hoists the permission states.
@@ -58,9 +57,8 @@ fun AppIntroductionScreen(onDone: () -> Unit, viewModel: IntroViewModel) {
 
     val backStack = rememberNavBackStack(Welcome)
 
-    NavDisplay<NavKey>(
+    MeshtasticNavDisplay(
         backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
         entryProvider =
         introNavGraph(
             backStack = backStack,

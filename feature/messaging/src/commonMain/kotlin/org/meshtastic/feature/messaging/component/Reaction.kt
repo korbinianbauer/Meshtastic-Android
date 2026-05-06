@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,8 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddReaction
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,7 +55,6 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.stringResource
 import org.meshtastic.core.model.DataPacket
 import org.meshtastic.core.model.MessageStatus
-import org.meshtastic.core.model.Node
 import org.meshtastic.core.model.Reaction
 import org.meshtastic.core.model.getStringResFrom
 import org.meshtastic.core.model.util.getShortDateTime
@@ -65,15 +62,18 @@ import org.meshtastic.core.resources.Res
 import org.meshtastic.core.resources.delivery_confirmed
 import org.meshtastic.core.resources.error
 import org.meshtastic.core.resources.message_delivery_status
+import org.meshtastic.core.resources.message_status_delivered
 import org.meshtastic.core.resources.message_status_enroute
 import org.meshtastic.core.resources.message_status_queued
+import org.meshtastic.core.resources.message_status_unknown
 import org.meshtastic.core.resources.react
 import org.meshtastic.core.resources.you
 import org.meshtastic.core.ui.component.BottomSheetDialog
 import org.meshtastic.core.ui.component.Rssi
 import org.meshtastic.core.ui.component.Snr
 import org.meshtastic.core.ui.emoji.EmojiPickerDialog
-import org.meshtastic.core.ui.icon.Hops
+import org.meshtastic.core.ui.icon.AddReaction
+import org.meshtastic.core.ui.icon.HopCount
 import org.meshtastic.core.ui.icon.MeshtasticIcons
 import org.meshtastic.feature.messaging.DeliveryInfo
 
@@ -122,7 +122,6 @@ internal fun ReactionItem(
                     text = emojiCount.toString(),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -143,7 +142,7 @@ internal fun ReactionRow(
 
     AnimatedVisibility(emojiGroups.isNotEmpty(), modifier = modifier) {
         LazyRow(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(emojiGroups.entries.toList()) { entry ->
+            items(emojiGroups.entries.toList(), key = { it.key }) { entry ->
                 val emoji = entry.key
                 val reactions = entry.value
                 val localReaction = reactions.find { it.user.id == DataPacket.ID_LOCAL || it.user.id == myId }
@@ -180,7 +179,7 @@ internal fun AddReactionButton(modifier: Modifier = Modifier, onSendReaction: (S
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
     ) {
         Icon(
-            imageVector = Icons.Rounded.AddReaction,
+            imageVector = MeshtasticIcons.AddReaction,
             contentDescription = stringResource(Res.string.react),
             modifier = Modifier.padding(6.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -195,8 +194,6 @@ internal fun ReactionDialog(
     onDismiss: () -> Unit = {},
     myId: String? = null,
     onResend: (Reaction) -> Unit = {},
-    nodes: List<Node> = emptyList(),
-    ourNode: Node? = null,
 ) = BottomSheetDialog(onDismiss = onDismiss, modifier = Modifier.fillMaxHeight(fraction = .3f)) {
     val groupedEmojis = reactions.groupBy { it.emoji }
     var selectedEmoji by remember { mutableStateOf<String?>(null) }
@@ -210,12 +207,11 @@ internal fun ReactionDialog(
                 MessageStatus.RECEIVED -> Res.string.delivery_confirmed
                 MessageStatus.QUEUED -> Res.string.message_status_queued
                 MessageStatus.ENROUTE -> Res.string.message_status_enroute
-                else -> getStringResFrom(reaction.routingError)
-            }
-
-        val relayNodeName =
-            reaction.relayNode?.let { relayNodeId ->
-                Node.getRelayNode(relayNodeId, nodes, ourNode?.num)?.user?.long_name
+                MessageStatus.DELIVERED -> Res.string.message_status_delivered
+                MessageStatus.SFPP_ROUTING -> Res.string.message_status_enroute
+                MessageStatus.SFPP_CONFIRMED -> Res.string.delivery_confirmed
+                MessageStatus.ERROR -> getStringResFrom(reaction.routingError)
+                MessageStatus.UNKNOWN -> Res.string.message_status_unknown
             }
 
         DeliveryInfo(
@@ -227,13 +223,12 @@ internal fun ReactionDialog(
                 showStatusDialog = null
             },
             onDismiss = { showStatusDialog = null },
-            relayNodeName = relayNodeName,
             relays = reaction.relays,
         )
     }
 
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        items(groupedEmojis.entries.toList()) { entry ->
+        items(groupedEmojis.entries.toList(), key = { it.key }) { entry ->
             val emoji = entry.key
             val reactions = entry.value
             val localReaction = reactions.find { it.user.id == DataPacket.ID_LOCAL || it.user.id == myId }
@@ -243,7 +238,13 @@ internal fun ReactionDialog(
                 text = "$emoji${reactions.size}",
                 modifier =
                 Modifier.clip(CircleShape)
-                    .background(if (selectedEmoji == emoji) Color.Gray else Color.Transparent)
+                    .background(
+                        if (selectedEmoji == emoji) {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        } else {
+                            Color.Transparent
+                        },
+                    )
                     .then(if (isSending) Modifier.graphicsLayer(alpha = 0.5f) else Modifier)
                     .padding(8.dp)
                     .clickable { selectedEmoji = if (selectedEmoji == emoji) null else emoji },
@@ -255,7 +256,7 @@ internal fun ReactionDialog(
     HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
     LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        items(filteredReactions) { reaction ->
+        items(filteredReactions, key = { reaction -> "${reaction.user.id}:${reaction.emoji}" }) { reaction ->
             Column(modifier = Modifier.padding(horizontal = 8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -299,7 +300,7 @@ internal fun ReactionDialog(
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
                                 Icon(
-                                    imageVector = MeshtasticIcons.Hops,
+                                    imageVector = MeshtasticIcons.HopCount,
                                     contentDescription = null,
                                     modifier = Modifier.size(14.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),

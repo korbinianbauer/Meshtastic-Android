@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
  */
 package org.meshtastic.app.service
 
-import android.app.Notification
-import io.mockk.mockk
+import dev.mokkery.MockMode
+import dev.mokkery.mock
 import org.meshtastic.core.model.Node
 import org.meshtastic.core.repository.MeshServiceNotifications
 import org.meshtastic.core.repository.RadioInterfaceService
@@ -25,7 +25,7 @@ import org.meshtastic.proto.ClientNotification
 import org.meshtastic.proto.Telemetry
 
 class Fakes {
-    val service: RadioInterfaceService = mockk(relaxed = true)
+    val service: RadioInterfaceService = mock(MockMode.autofill)
 }
 
 class FakeMeshServiceNotifications : MeshServiceNotifications {
@@ -33,8 +33,10 @@ class FakeMeshServiceNotifications : MeshServiceNotifications {
 
     override fun initChannels() {}
 
-    override fun updateServiceStateNotification(summaryString: String?, telemetry: Telemetry?): Notification =
-        mockk(relaxed = true)
+    override fun updateServiceStateNotification(
+        state: org.meshtastic.core.model.ConnectionState,
+        telemetry: Telemetry?,
+    ) {}
 
     override suspend fun updateMessageNotification(
         contactKey: String,

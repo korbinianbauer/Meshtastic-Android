@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,7 +65,7 @@ open class ProcessRadioResponseUseCase {
      * @return A [RadioResponseResult] if the packet matches a request, or null otherwise.
      */
     @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
-    operator fun invoke(packet: MeshPacket, destNum: Int, requestIds: Set<Int>): RadioResponseResult? {
+    open operator fun invoke(packet: MeshPacket, destNum: Int, requestIds: Set<Int>): RadioResponseResult? {
         val data = packet.decoded
         if (data == null || data.request_id !in requestIds) {
             return null
@@ -83,7 +83,9 @@ open class ProcessRadioResponseUseCase {
         return when {
             parsed.error_reason != Routing.Error.NONE ->
                 RadioResponseResult.Error(UiText.Resource(getStringResFrom(parsed.error_reason?.value ?: 0)))
+
             packet.from == destNum -> RadioResponseResult.Success
+
             else -> null
         }
     }

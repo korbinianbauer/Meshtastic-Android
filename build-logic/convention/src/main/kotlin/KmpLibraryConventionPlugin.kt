@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,13 +14,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.apply
 import org.meshtastic.buildlogic.configureAndroidMarketplaceFallback
+import org.meshtastic.buildlogic.configureGraphTasks
 import org.meshtastic.buildlogic.configureKmpTestDependencies
 import org.meshtastic.buildlogic.configureKotlinMultiplatform
+import org.meshtastic.buildlogic.configureTestOptions
 import org.meshtastic.buildlogic.libs
 import org.meshtastic.buildlogic.plugin
 
@@ -34,9 +35,13 @@ class KmpLibraryConventionPlugin : Plugin<Project> {
             apply(plugin = "meshtastic.spotless")
             apply(plugin = "meshtastic.dokka")
             apply(plugin = "meshtastic.kover")
+            apply(plugin = "org.gradle.test-retry")
+            apply(plugin = libs.plugin("mokkery").get().pluginId)
 
             configureKotlinMultiplatform()
             configureKmpTestDependencies()
+            configureTestOptions()
+            configureGraphTasks()
             configureAndroidMarketplaceFallback()
         }
     }

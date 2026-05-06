@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,10 +23,10 @@ plugins {
 kotlin {
     jvm()
 
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.core.ble"
         androidResources.enable = false
+        withHostTest { isIncludeAndroidResources = true }
     }
 
     sourceSets {
@@ -37,31 +37,17 @@ kotlin {
 
             implementation(libs.kermit)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kable.core)
         }
 
         androidMain.dependencies {
-            api(libs.nordic.client.android)
-            api(libs.nordic.ble.env.android)
-            api(libs.nordic.ble.env.android.compose)
-            api(libs.nordic.common.scanner.ble)
-            api(libs.nordic.common.core)
-
             implementation(libs.androidx.lifecycle.process)
-            implementation(libs.androidx.lifecycle.runtime.ktx)
+            implementation(libs.jetbrains.lifecycle.runtime)
         }
 
         commonTest.dependencies {
-            implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.mockk)
-        }
-
-        androidUnitTest.dependencies {
-            implementation(libs.junit)
-            implementation(libs.nordic.client.android.mock)
-            implementation(libs.nordic.client.core.mock)
-            implementation(libs.nordic.core.mock)
-            implementation(libs.androidx.lifecycle.testing)
+            implementation(projects.core.testing)
         }
     }
 }

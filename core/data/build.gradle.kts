@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,13 +18,13 @@
 plugins {
     alias(libs.plugins.meshtastic.kmp.library)
     alias(libs.plugins.meshtastic.kotlinx.serialization)
+    id("meshtastic.kmp.jvm.android")
     id("meshtastic.koin")
 }
 
 kotlin {
     jvm()
 
-    @Suppress("UnstableApiUsage")
     android {
         namespace = "org.meshtastic.core.data"
         androidResources.enable = false
@@ -42,6 +42,7 @@ kotlin {
             implementation(projects.core.network)
             implementation(projects.core.prefs)
             implementation(projects.core.proto)
+            implementation(projects.core.takserver)
 
             implementation(libs.jetbrains.lifecycle.runtime)
             implementation(libs.androidx.paging.common)
@@ -51,27 +52,23 @@ kotlin {
             implementation(libs.kotlinx.collections.immutable)
         }
 
+        // Room / SQLite runtime shared between Android and Desktop JVM targets
+        val jvmAndroidMain by getting {
+            dependencies {
+                implementation(libs.androidx.room.runtime)
+                implementation(libs.androidx.room.paging)
+                implementation(libs.androidx.sqlite.bundled)
+            }
+        }
+
         androidMain.dependencies {
             implementation(libs.androidx.core.ktx)
             implementation(libs.androidx.core.location.altitude)
-
-            // Needed because core:data references MeshtasticDatabase (supertype RoomDatabase)
-            implementation(libs.androidx.room.runtime)
-            implementation(libs.androidx.room.paging)
-            implementation(libs.androidx.sqlite.bundled)
-        }
-
-        jvmMain.dependencies {
-            // Room / SQLite runtime for JVM target
-            implementation(libs.androidx.room.runtime)
-            implementation(libs.androidx.room.paging)
-            implementation(libs.androidx.sqlite.bundled)
         }
 
         commonTest.dependencies {
-            implementation(kotlin("test"))
+            implementation(projects.core.testing)
             implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.mockk)
         }
     }
 }

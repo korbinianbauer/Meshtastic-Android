@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,9 +27,9 @@ import org.meshtastic.feature.node.model.isEffectivelyUnmessageable
 import org.meshtastic.proto.Config
 
 @Single
-class GetFilteredNodesUseCase constructor(private val nodeRepository: NodeRepository) {
+open class GetFilteredNodesUseCase constructor(private val nodeRepository: NodeRepository) {
     @Suppress("CyclomaticComplexMethod", "LongMethod")
-    operator fun invoke(filter: NodeFilterState, sort: NodeSortOption): Flow<List<Node>> = nodeRepository
+    open operator fun invoke(filter: NodeFilterState, sort: NodeSortOption): Flow<List<Node>> = nodeRepository
         .getNodes(
             sort = sort,
             filter = filter.filterText,
@@ -57,5 +57,6 @@ class GetFilteredNodesUseCase constructor(private val nodeRepository: NodeReposi
                         true
                     }
                 }
+                .filter { node -> if (filter.excludeMqtt) !node.viaMqtt else true }
         }
 }

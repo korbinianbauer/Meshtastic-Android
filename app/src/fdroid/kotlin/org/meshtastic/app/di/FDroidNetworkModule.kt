@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,11 +16,8 @@
  */
 package org.meshtastic.app.di
 
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import org.koin.core.annotation.Module
 import org.koin.core.annotation.Single
-import org.meshtastic.core.common.BuildConfigProvider
 import org.meshtastic.core.model.NetworkDeviceHardware
 import org.meshtastic.core.model.NetworkFirmwareReleases
 import org.meshtastic.core.network.service.ApiService
@@ -28,24 +25,18 @@ import org.meshtastic.core.network.service.ApiService
 @Module
 class FDroidNetworkModule {
 
-    @Single
-    fun provideOkHttpClient(buildConfigProvider: BuildConfigProvider): OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(
-            interceptor =
-            HttpLoggingInterceptor().apply {
-                if (buildConfigProvider.isDebug) {
-                    setLevel(HttpLoggingInterceptor.Level.BODY)
-                }
-            },
-        )
-        .build()
-
+    /**
+     * F-Droid builds intentionally avoid network calls to the Meshtastic API.
+     *
+     * We throw [UnsupportedOperationException] (an [Exception], not an [Error]) so that `safeCatching {}` in the
+     * repositories captures the failure and falls back to the bundled JSON assets instead of crashing the app.
+     */
     @Single
     fun provideApiService(): ApiService = object : ApiService {
         override suspend fun getDeviceHardware(): List<NetworkDeviceHardware> =
-            throw NotImplementedError("API calls to getDeviceHardware are not supported on Fdroid builds.")
+            throw UnsupportedOperationException("getDeviceHardware is not supported on F-Droid builds.")
 
         override suspend fun getFirmwareReleases(): NetworkFirmwareReleases =
-            throw NotImplementedError("API calls to getFirmwareReleases are not supported on Fdroid builds.")
+            throw UnsupportedOperationException("getFirmwareReleases is not supported on F-Droid builds.")
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,12 +16,12 @@
  */
 package org.meshtastic.core.database.entity
 
-import androidx.room.ColumnInfo
-import androidx.room.Embedded
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
-import androidx.room.Relation
+import androidx.room3.ColumnInfo
+import androidx.room3.Embedded
+import androidx.room3.Entity
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
+import androidx.room3.Relation
 import okio.ByteString
 import org.meshtastic.core.common.util.nowMillis
 import org.meshtastic.core.model.DataPacket
@@ -87,6 +87,9 @@ data class PacketEntity(
         Index(value = ["contact_key"]),
         Index(value = ["contact_key", "port_num", "received_time"]),
         Index(value = ["packet_id"]),
+        Index(value = ["received_time"]),
+        Index(value = ["filtered"]),
+        Index(value = ["read"]),
     ],
 )
 data class Packet(

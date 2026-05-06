@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -42,6 +42,9 @@ class RadioPrefsImpl(
     override val devAddr: StateFlow<String?> =
         dataStore.data.map { it[KEY_DEV_ADDR_PREF] }.stateIn(scope, SharingStarted.Eagerly, null)
 
+    override val devName: StateFlow<String?> =
+        dataStore.data.map { it[KEY_DEV_NAME_PREF] }.stateIn(scope, SharingStarted.Eagerly, null)
+
     override fun setDevAddr(address: String?) {
         scope.launch {
             dataStore.edit { prefs ->
@@ -54,7 +57,20 @@ class RadioPrefsImpl(
         }
     }
 
+    override fun setDevName(name: String?) {
+        scope.launch {
+            dataStore.edit { prefs ->
+                if (name == null) {
+                    prefs.remove(KEY_DEV_NAME_PREF)
+                } else {
+                    prefs[KEY_DEV_NAME_PREF] = name
+                }
+            }
+        }
+    }
+
     companion object {
         val KEY_DEV_ADDR_PREF = stringPreferencesKey("devAddr2")
+        val KEY_DEV_NAME_PREF = stringPreferencesKey("devName")
     }
 }

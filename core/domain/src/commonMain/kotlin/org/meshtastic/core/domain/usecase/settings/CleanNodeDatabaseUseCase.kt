@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,7 +30,11 @@ constructor(
     private val radioController: RadioController,
 ) {
     /** Identifies nodes that match the cleanup criteria. */
-    suspend fun getNodesToClean(olderThanDays: Float, onlyUnknownNodes: Boolean, currentTimeSeconds: Long): List<Node> {
+    open suspend fun getNodesToClean(
+        olderThanDays: Float,
+        onlyUnknownNodes: Boolean,
+        currentTimeSeconds: Long,
+    ): List<Node> {
         val sevenDaysAgoSeconds = currentTimeSeconds - 7.days.inWholeSeconds
         val olderThanTimestamp = currentTimeSeconds - olderThanDays.toInt().days.inWholeSeconds
 
@@ -49,12 +53,12 @@ constructor(
     }
 
     /** Performs the cleanup of specified nodes. */
-    suspend fun cleanNodes(nodeNums: List<Int>) {
+    open suspend fun cleanNodes(nodeNums: List<Int>) {
         if (nodeNums.isEmpty()) return
 
         nodeRepository.deleteNodes(nodeNums)
-        val packetId = radioController.getPacketId()
         for (nodeNum in nodeNums) {
+            val packetId = radioController.getPacketId()
             radioController.removeByNodenum(packetId, nodeNum)
         }
     }

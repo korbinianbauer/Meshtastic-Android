@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ import org.meshtastic.proto.Telemetry
  */
 @Suppress("TooManyFunctions")
 @Single
-class MeshLogRepositoryImpl(
+open class MeshLogRepositoryImpl(
     private val dbManager: DatabaseProvider,
     private val dispatchers: CoroutineDispatchers,
     private val meshLogPrefs: MeshLogPrefs,

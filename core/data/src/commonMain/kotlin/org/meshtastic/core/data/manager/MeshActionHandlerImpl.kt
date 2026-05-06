@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,15 +16,17 @@
  */
 package org.meshtastic.core.data.manager
 
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import okio.ByteString
 import okio.ByteString.Companion.toByteString
+import org.koin.core.annotation.Named
 import org.koin.core.annotation.Single
 import org.meshtastic.core.common.database.DatabaseManager
 import org.meshtastic.core.common.util.handledLaunch
-import org.meshtastic.core.common.util.ignoreException
+import org.meshtastic.core.common.util.ignoreExceptionSuspend
 import org.meshtastic.core.common.util.nowMillis
+import org.meshtastic.core.common.util.safeCatching
 import org.meshtastic.core.model.DataPacket
 import org.meshtastic.core.model.MeshUser
 import org.meshtastic.core.model.MessageStatus
@@ -37,11 +39,13 @@ import org.meshtastic.core.repository.MeshActionHandler
 import org.meshtastic.core.repository.MeshDataHandler
 import org.meshtastic.core.repository.MeshMessageProcessor
 import org.meshtastic.core.repository.MeshPrefs
-import org.meshtastic.core.repository.MeshServiceNotifications
 import org.meshtastic.core.repository.NodeManager
+import org.meshtastic.core.repository.NotificationManager
 import org.meshtastic.core.repository.PacketRepository
 import org.meshtastic.core.repository.PlatformAnalytics
+import org.meshtastic.core.repository.RadioConfigRepository
 import org.meshtastic.core.repository.ServiceBroadcasts
+import org.meshtastic.core.repository.UiPrefs
 import org.meshtastic.proto.AdminMessage
 import org.meshtastic.proto.Channel
 import org.meshtastic.proto.Config
@@ -60,33 +64,50 @@ class MeshActionHandlerImpl(
     private val dataHandler: Lazy<MeshDataHandler>,
     private val analytics: PlatformAnalytics,
     private val meshPrefs: MeshPrefs,
+    private val uiPrefs: UiPrefs,
     private val databaseManager: DatabaseManager,
-    private val serviceNotifications: MeshServiceNotifications,
+    private val notificationManager: NotificationManager,
     private val messageProcessor: Lazy<MeshMessageProcessor>,
+    private val radioConfigRepository: RadioConfigRepository,
+    @Named("ServiceScope") private val scope: CoroutineScope,
 ) : MeshActionHandler {
-    private var scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    override fun start(scope: CoroutineScope) {
-        this.scope = scope
-    }
 
     companion object {
         private const val DEFAULT_REBOOT_DELAY = 5
         private const val EMOJI_INDICATOR = 1
     }
 
-    override fun onServiceAction(action: ServiceAction) {
-        ignoreException {
-            val myNodeNum = nodeManager.myNodeNum ?: return@ignoreException
+    override suspend fun onServiceAction(action: ServiceAction) {
+        Logger.d { "ServiceAction dispatched: ${action::class.simpleName}" }
+        ignoreExceptionSuspend {
+            val myNodeNum = nodeManager.myNodeNum.value
+            if (myNodeNum == null) {
+                Logger.w { "MeshActionHandlerImpl: myNodeNum is null, skipping ServiceAction!" }
+                if (action is ServiceAction.SendContact) {
+                    action.result.complete(false)
+                }
+                return@ignoreExceptionSuspend
+            }
             when (action) {
                 is ServiceAction.Favorite -> handleFavorite(action, myNodeNum)
+
                 is ServiceAction.Ignore -> handleIgnore(action, myNodeNum)
+
                 is ServiceAction.Mute -> handleMute(action, myNodeNum)
+
                 is ServiceAction.Reaction -> handleReaction(action, myNodeNum)
+
                 is ServiceAction.ImportContact -> handleImportContact(action, myNodeNum)
+
                 is ServiceAction.SendContact -> {
-                    commandSender.sendAdmin(myNodeNum) { AdminMessage(add_contact = action.contact) }
+                    val accepted =
+                        safeCatching {
+                            commandSender.sendAdminAwait(myNodeNum) { AdminMessage(add_contact = action.contact) }
+                        }
+                            .getOrDefault(false)
+                    action.result.complete(accepted)
                 }
+
                 is ServiceAction.GetDeviceMetadata -> {
                     commandSender.sendAdmin(action.destNum, wantResponse = true) {
                         AdminMessage(get_device_metadata_request = true)
@@ -178,6 +199,7 @@ class MeshActionHandlerImpl(
     }
 
     override fun handleSetOwner(u: MeshUser, myNodeNum: Int) {
+        Logger.d { "Setting owner: longName=${u.longName}, shortName=${u.shortName}" }
         val newUser = User(id = u.id, long_name = u.longName, short_name = u.shortName, is_licensed = u.isLicensed)
         commandSender.sendAdmin(myNodeNum) { AdminMessage(set_owner = newUser) }
         nodeManager.handleReceivedUser(myNodeNum, newUser)
@@ -187,19 +209,21 @@ class MeshActionHandlerImpl(
         commandSender.sendData(p)
         serviceBroadcasts.broadcastMessageStatus(p.id, p.status ?: MessageStatus.UNKNOWN)
         dataHandler.value.rememberDataPacket(p, myNodeNum, false)
-        val bytes = p.bytes ?: okio.ByteString.EMPTY
+        val bytes = p.bytes ?: ByteString.EMPTY
         analytics.track("data_send", DataPair("num_bytes", bytes.size), DataPair("type", p.dataType))
     }
 
     override fun handleRequestPosition(destNum: Int, position: Position, myNodeNum: Int) {
         if (destNum != myNodeNum) {
-            val provideLocation = meshPrefs.shouldProvideNodeLocation(myNodeNum).value
+            val provideLocation = uiPrefs.shouldProvideNodeLocation(myNodeNum).value
             val currentPosition =
                 when {
                     provideLocation && position.isValid() -> position
+
                     provideLocation ->
                         nodeManager.nodeDBbyNodeNum[myNodeNum]?.position?.let { Position(it) }?.takeIf { it.isValid() }
                             ?: Position(0.0, 0.0, 0)
+
                     else -> Position(0.0, 0.0, 0)
                 }
             commandSender.requestPosition(destNum, currentPosition)
@@ -224,11 +248,20 @@ class MeshActionHandlerImpl(
     override fun handleSetConfig(payload: ByteArray, myNodeNum: Int) {
         val c = Config.ADAPTER.decode(payload)
         commandSender.sendAdmin(myNodeNum) { AdminMessage(set_config = c) }
+        // Optimistically persist the config locally so CommandSender picks up
+        // the new values (e.g. hop_limit) immediately instead of waiting for
+        // the next want_config handshake.
+        scope.handledLaunch { radioConfigRepository.setLocalConfig(c) }
     }
 
     override fun handleSetRemoteConfig(id: Int, destNum: Int, payload: ByteArray) {
         val c = Config.ADAPTER.decode(payload)
         commandSender.sendAdmin(destNum, id) { AdminMessage(set_config = c) }
+        // When targeting the local node, optimistically persist the config so the
+        // UI reflects changes immediately (matching handleSetConfig behaviour).
+        if (destNum == nodeManager.myNodeNum.value) {
+            scope.handledLaunch { radioConfigRepository.setLocalConfig(c) }
+        }
     }
 
     override fun handleGetRemoteConfig(id: Int, destNum: Int, config: Int) {
@@ -245,6 +278,11 @@ class MeshActionHandlerImpl(
         val c = ModuleConfig.ADAPTER.decode(payload)
         commandSender.sendAdmin(destNum, id) { AdminMessage(set_module_config = c) }
         c.statusmessage?.let { sm -> nodeManager.updateNodeStatus(destNum, sm.node_status) }
+        // Optimistically persist module config locally so the UI reflects the
+        // new values immediately instead of waiting for the next want_config handshake.
+        if (destNum == nodeManager.myNodeNum.value) {
+            scope.handledLaunch { radioConfigRepository.setLocalModuleConfig(c) }
+        }
     }
 
     override fun handleGetModuleConfig(id: Int, destNum: Int, config: Int) {
@@ -275,6 +313,10 @@ class MeshActionHandlerImpl(
         if (payload != null) {
             val c = Channel.ADAPTER.decode(payload)
             commandSender.sendAdmin(myNodeNum) { AdminMessage(set_channel = c) }
+            // Optimistically persist the channel settings locally so the UI
+            // reflects changes immediately instead of waiting for the next
+            // want_config handshake.
+            scope.handledLaunch { radioConfigRepository.updateChannelSettings(c) }
         }
     }
 
@@ -282,6 +324,11 @@ class MeshActionHandlerImpl(
         if (payload != null) {
             val c = Channel.ADAPTER.decode(payload)
             commandSender.sendAdmin(destNum, id) { AdminMessage(set_channel = c) }
+            // When targeting the local node, optimistically persist the channel so
+            // the UI reflects changes immediately (matching handleSetChannel behaviour).
+            if (destNum == nodeManager.myNodeNum.value) {
+                scope.handledLaunch { radioConfigRepository.updateChannelSettings(c) }
+            }
         }
     }
 
@@ -314,17 +361,19 @@ class MeshActionHandlerImpl(
     }
 
     override fun handleRequestReboot(requestId: Int, destNum: Int) {
+        Logger.i { "Reboot requested for node $destNum" }
         commandSender.sendAdmin(destNum, requestId) { AdminMessage(reboot_seconds = DEFAULT_REBOOT_DELAY) }
     }
 
     override fun handleRequestRebootOta(requestId: Int, destNum: Int, mode: Int, hash: ByteArray?) {
         val otaMode = OTAMode.fromValue(mode) ?: OTAMode.NO_REBOOT_OTA
         val otaEvent =
-            AdminMessage.OTAEvent(reboot_ota_mode = otaMode, ota_hash = hash?.toByteString() ?: okio.ByteString.EMPTY)
+            AdminMessage.OTAEvent(reboot_ota_mode = otaMode, ota_hash = hash?.toByteString() ?: ByteString.EMPTY)
         commandSender.sendAdmin(destNum, requestId) { AdminMessage(ota_request = otaEvent) }
     }
 
     override fun handleRequestFactoryReset(requestId: Int, destNum: Int) {
+        Logger.i { "Factory reset requested for node $destNum" }
         commandSender.sendAdmin(destNum, requestId) { AdminMessage(factory_reset_device = 1) }
     }
 
@@ -341,12 +390,13 @@ class MeshActionHandlerImpl(
     override fun handleUpdateLastAddress(deviceAddr: String?) {
         val currentAddr = meshPrefs.deviceAddress.value
         if (deviceAddr != currentAddr) {
+            Logger.i { "Device address changed, switching database and clearing node DB" }
             meshPrefs.setDeviceAddress(deviceAddr)
             scope.handledLaunch {
                 nodeManager.clear()
                 messageProcessor.value.clearEarlyPackets()
                 databaseManager.switchActiveDatabase(deviceAddr)
-                serviceNotifications.clearNotifications()
+                notificationManager.cancelAll()
                 nodeManager.loadCachedNodeDB()
             }
         }

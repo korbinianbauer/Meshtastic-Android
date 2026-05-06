@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,4 +52,9 @@ data class DeviceVersion(val asString: String) : Comparable<DeviceVersion> {
     }
 
     override fun compareTo(other: DeviceVersion): Int = asInt.compareTo(other.asInt)
+
+    companion object {
+        const val MIN_FW_VERSION = "2.5.14"
+        const val ABS_MIN_FW_VERSION = "2.3.15"
+    }
 }

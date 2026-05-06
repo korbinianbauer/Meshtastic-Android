@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,6 +16,14 @@
  */
 package org.meshtastic.core.network.transport
 
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.property.Arb
+import io.kotest.property.arbitrary.byte
+import io.kotest.property.arbitrary.byteArray
+import io.kotest.property.arbitrary.int
+import io.kotest.property.checkAll
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -54,6 +62,31 @@ class StreamFrameCodecTest {
 
         assertEquals(1, receivedPackets.size)
         assertEquals(listOf(0x55.toByte()), receivedPackets[0].toList())
+    }
+
+    @Test
+    fun `frameAndSend and processInputByte are inverse`() = runTest {
+        checkAll(Arb.byteArray(Arb.int(0, 512), Arb.byte())) { payload ->
+            var received: ByteArray? = null
+            val codec = StreamFrameCodec(onPacketReceived = { received = it })
+
+            val bytes = mutableListOf<ByteArray>()
+            codec.frameAndSend(payload, sendBytes = { bytes.add(it) })
+
+            bytes.forEach { arr -> arr.forEach { codec.processInputByte(it) } }
+
+            received.shouldNotBeNull()
+            received.shouldBe(payload)
+        }
+    }
+
+    @Test
+    fun `processInputByte is robust against random noise`() = runTest {
+        checkAll(Arb.byteArray(Arb.int(0, 1000), Arb.byte())) { noise ->
+            val codec = StreamFrameCodec(onPacketReceived = { /* ignore */ })
+            noise.forEach { codec.processInputByte(it) }
+            // Should not crash
+        }
     }
 
     @Test
@@ -119,6 +152,26 @@ class StreamFrameCodecTest {
 
         assertEquals(1, receivedPackets.size)
         assertEquals(listOf(0xAA.toByte()), receivedPackets[0].toList())
+    }
+
+    @Test
+    fun `frameAndSend produces correct header for 1-byte payload`() = runTest {
+        val payload = byteArrayOf(0x42.toByte())
+        val sentBytes = mutableListOf<ByteArray>()
+
+        codec.frameAndSend(payload, sendBytes = { sentBytes.add(it) })
+
+        // First sent bytes are the 4-byte header, second is the payload
+        assertEquals(2, sentBytes.size)
+        val header = sentBytes[0]
+        assertEquals(4, header.size)
+        assertEquals(0x94.toByte(), header[0])
+        assertEquals(0xc3.toByte(), header[1])
+        assertEquals(0x00.toByte(), header[2])
+        assertEquals(0x01.toByte(), header[3])
+
+        val sentPayload = sentBytes[1]
+        assertEquals(payload.toList(), sentPayload.toList())
     }
 
     @Test

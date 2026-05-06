@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025-2026 Meshtastic LLC
+ * Copyright (c) 2026 Meshtastic LLC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,96 +26,35 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.room.Room
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import org.meshtastic.core.common.BuildConfigProvider
-import org.meshtastic.core.common.database.DatabaseManager
-import org.meshtastic.core.database.DatabaseProvider
-import org.meshtastic.core.database.MeshtasticDatabase
-import org.meshtastic.core.database.MeshtasticDatabase.Companion.configureCommon
-import org.meshtastic.core.database.MeshtasticDatabaseConstructor
+import org.meshtastic.core.database.desktopDataDir
+import org.meshtastic.core.datastore.di.DATASTORE_SCOPE
 import org.meshtastic.core.datastore.serializer.ChannelSetSerializer
 import org.meshtastic.core.datastore.serializer.LocalConfigSerializer
 import org.meshtastic.core.datastore.serializer.LocalStatsSerializer
 import org.meshtastic.core.datastore.serializer.ModuleConfigSerializer
+import org.meshtastic.core.di.CoroutineDispatchers
+import org.meshtastic.desktop.DesktopBuildConfig
 import org.meshtastic.proto.ChannelSet
 import org.meshtastic.proto.LocalConfig
 import org.meshtastic.proto.LocalModuleConfig
 import org.meshtastic.proto.LocalStats
 
-/**
- * Resolves the desktop data directory for persistent storage (DataStore files, Room database). Defaults to
- * `~/.meshtastic/`. Override via `MESHTASTIC_DATA_DIR` environment variable.
- */
-private fun desktopDataDir(): String {
-    val override = System.getenv("MESHTASTIC_DATA_DIR")
-    if (!override.isNullOrBlank()) return override
-    return System.getProperty("user.home") + "/.meshtastic"
-}
-
 /** Creates a file-backed [DataStore]<[Preferences]> at the given path under the data directory. */
 private fun createPreferencesDataStore(name: String, scope: CoroutineScope): DataStore<Preferences> {
     val dir = desktopDataDir() + "/datastore"
     FileSystem.SYSTEM.createDirectories(dir.toPath())
-    return PreferenceDataStoreFactory.create(
+    return PreferenceDataStoreFactory.createWithPath(
         corruptionHandler = ReplaceFileCorruptionHandler(produceNewData = { emptyPreferences() }),
         scope = scope,
-        produceFile = { (dir + "/$name.preferences_pb").toPath().toNioPath().toFile() },
+        produceFile = { "$dir/$name.preferences_pb".toPath() },
     )
-}
-
-/**
- * Desktop Room KMP database provider. Builds a single file-backed SQLite database using [MeshtasticDatabaseConstructor]
- * and [BundledSQLiteDriver] (both KMP-ready).
- */
-class DesktopDatabaseManager :
-    DatabaseProvider,
-    DatabaseManager {
-    private val dir = desktopDataDir()
-    private val dbName = "$dir/meshtastic.db"
-
-    private val db: MeshtasticDatabase by lazy {
-        FileSystem.SYSTEM.createDirectories(dir.toPath())
-        Room.databaseBuilder<MeshtasticDatabase>(name = dbName) { MeshtasticDatabaseConstructor.initialize() }
-            .configureCommon()
-            .build()
-    }
-
-    override val currentDb: StateFlow<MeshtasticDatabase> by lazy { MutableStateFlow(db) }
-
-    override suspend fun <T> withDb(block: suspend (MeshtasticDatabase) -> T): T? = block(db)
-
-    private val _cacheLimit = MutableStateFlow(DEFAULT_CACHE_LIMIT)
-    override val cacheLimit: StateFlow<Int> = _cacheLimit
-
-    override fun getCurrentCacheLimit(): Int = _cacheLimit.value
-
-    override fun setCacheLimit(limit: Int) {
-        _cacheLimit.value = limit.coerceIn(MIN_LIMIT, MAX_LIMIT)
-    }
-
-    override suspend fun switchActiveDatabase(address: String?) {
-        // Desktop uses a single database — no per-device switching
-    }
-
-    override fun hasDatabaseFor(address: String?): Boolean {
-        // Desktop always has the single database available
-        return !address.isNullOrBlank() && address != "n"
-    }
-
-    companion object {
-        private const val DEFAULT_CACHE_LIMIT = 100
-        private const val MIN_LIMIT = 1
-        private const val MAX_LIMIT = 100
-    }
 }
 
 /**
@@ -139,67 +78,80 @@ private class DesktopProcessLifecycleOwner : LifecycleOwner {
  * Provides all platform-specific bindings that the real KMP `commonMain` implementations need:
  * - Named [DataStore]<[Preferences]> instances (12 preference stores + 1 core preferences store)
  * - Proto [DataStore] instances (LocalConfig, ModuleConfig, ChannelSet, LocalStats)
- * - [DatabaseProvider] and [DatabaseManager] via Room KMP
  * - [Lifecycle] (`ProcessLifecycle`)
  * - [BuildConfigProvider]
  */
-@Suppress("InjectDispatcher")
 fun desktopPlatformModule() = module {
+    // Application-lifetime scope shared by all DataStore instances. Per the DataStore docs:
+    // "The Job within this context dictates the lifecycle of the DataStore's internal operations.
+    // Ensure it is an application-scoped context that is not canceled by UI lifecycle events."
+    // DataStore has no close() API — the in-memory cache is released only when this Job is cancelled
+    // (at process exit). Using SupervisorJob so a single store's failure doesn't cascade.
+    single<CoroutineScope>(named(DATASTORE_SCOPE)) { CoroutineScope(get<CoroutineDispatchers>().io + SupervisorJob()) }
+
     includes(desktopPreferencesDataStoreModule(), desktopProtoDataStoreModule())
 
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    // -- Build config --
+    // -- Build config (values generated at build time by generateDesktopBuildConfig) --
     single<BuildConfigProvider> {
         object : BuildConfigProvider {
-            override val isDebug: Boolean = true
-            override val applicationId: String = "org.meshtastic.desktop"
-            override val versionCode: Int = 1
-            override val versionName: String = "0.1.0-desktop"
-            override val absoluteMinFwVersion: String = "2.0.0"
-            override val minFwVersion: String = "2.5.0"
+            override val isDebug: Boolean = DesktopBuildConfig.IS_DEBUG
+            override val applicationId: String = DesktopBuildConfig.APPLICATION_ID
+            override val versionCode: Int = DesktopBuildConfig.VERSION_CODE
+            override val versionName: String = DesktopBuildConfig.VERSION_NAME
+            override val absoluteMinFwVersion: String = DesktopBuildConfig.ABS_MIN_FW_VERSION
+            override val minFwVersion: String = DesktopBuildConfig.MIN_FW_VERSION
         }
     }
 
     // -- Process Lifecycle (stays RESUMED forever on desktop) --
     single(named("ProcessLifecycle")) { DesktopProcessLifecycleOwner().lifecycle }
-
-    // -- Database (Room KMP with BundledSQLiteDriver) --
-    single { DesktopDatabaseManager() }
-    single<DatabaseProvider> { get<DesktopDatabaseManager>() }
-    single<DatabaseManager> { get<DesktopDatabaseManager>() }
 }
 
 /** Named [DataStore]<[Preferences]> instances for all preference domains. */
-@Suppress("InjectDispatcher")
 private fun desktopPreferencesDataStoreModule() = module {
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    single<DataStore<Preferences>>(named("AnalyticsDataStore")) { createPreferencesDataStore("analytics", scope) }
+    single<DataStore<Preferences>>(named("AnalyticsDataStore")) {
+        createPreferencesDataStore("analytics", get(named(DATASTORE_SCOPE)))
+    }
     single<DataStore<Preferences>>(named("HomoglyphEncodingDataStore")) {
-        createPreferencesDataStore("homoglyph_encoding", scope)
+        createPreferencesDataStore("homoglyph_encoding", get(named(DATASTORE_SCOPE)))
     }
-    single<DataStore<Preferences>>(named("AppDataStore")) { createPreferencesDataStore("app", scope) }
-    single<DataStore<Preferences>>(named("CustomEmojiDataStore")) { createPreferencesDataStore("custom_emoji", scope) }
-    single<DataStore<Preferences>>(named("MapDataStore")) { createPreferencesDataStore("map", scope) }
-    single<DataStore<Preferences>>(named("MapConsentDataStore")) { createPreferencesDataStore("map_consent", scope) }
+    single<DataStore<Preferences>>(named("AppDataStore")) {
+        createPreferencesDataStore("app", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("CustomEmojiDataStore")) {
+        createPreferencesDataStore("custom_emoji", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("MapDataStore")) {
+        createPreferencesDataStore("map", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("MapConsentDataStore")) {
+        createPreferencesDataStore("map_consent", get(named(DATASTORE_SCOPE)))
+    }
     single<DataStore<Preferences>>(named("MapTileProviderDataStore")) {
-        createPreferencesDataStore("map_tile_provider", scope)
+        createPreferencesDataStore("map_tile_provider", get(named(DATASTORE_SCOPE)))
     }
-    single<DataStore<Preferences>>(named("MeshDataStore")) { createPreferencesDataStore("mesh", scope) }
-    single<DataStore<Preferences>>(named("RadioDataStore")) { createPreferencesDataStore("radio", scope) }
-    single<DataStore<Preferences>>(named("UiDataStore")) { createPreferencesDataStore("ui", scope) }
-    single<DataStore<Preferences>>(named("MeshLogDataStore")) { createPreferencesDataStore("meshlog", scope) }
-    single<DataStore<Preferences>>(named("FilterDataStore")) { createPreferencesDataStore("filter", scope) }
+    single<DataStore<Preferences>>(named("MeshDataStore")) {
+        createPreferencesDataStore("mesh", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("RadioDataStore")) {
+        createPreferencesDataStore("radio", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("UiDataStore")) {
+        createPreferencesDataStore("ui", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("MeshLogDataStore")) {
+        createPreferencesDataStore("meshlog", get(named(DATASTORE_SCOPE)))
+    }
+    single<DataStore<Preferences>>(named("FilterDataStore")) {
+        createPreferencesDataStore("filter", get(named(DATASTORE_SCOPE)))
+    }
     single<DataStore<Preferences>>(named("CorePreferencesDataStore")) {
-        createPreferencesDataStore("core_preferences", scope)
+        createPreferencesDataStore("core_preferences", get(named(DATASTORE_SCOPE)))
     }
 }
 
 /** Proto [DataStore] instances (OkioStorage-backed). */
-@Suppress("InjectDispatcher")
 private fun desktopProtoDataStoreModule() = module {
-    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     val protoDir = desktopDataDir() + "/datastore"
 
     single<DataStore<LocalConfig>>(named("CoreLocalConfigDataStore")) {
@@ -211,7 +163,7 @@ private fun desktopProtoDataStoreModule() = module {
                 producePath = { "$protoDir/local_config.pb".toPath() },
             ),
             corruptionHandler = ReplaceFileCorruptionHandler(produceNewData = { LocalConfig() }),
-            scope = scope,
+            scope = get(named(DATASTORE_SCOPE)),
         )
     }
 
@@ -224,7 +176,7 @@ private fun desktopProtoDataStoreModule() = module {
                 producePath = { "$protoDir/module_config.pb".toPath() },
             ),
             corruptionHandler = ReplaceFileCorruptionHandler(produceNewData = { LocalModuleConfig() }),
-            scope = scope,
+            scope = get(named(DATASTORE_SCOPE)),
         )
     }
 
@@ -237,7 +189,7 @@ private fun desktopProtoDataStoreModule() = module {
                 producePath = { "$protoDir/channel_set.pb".toPath() },
             ),
             corruptionHandler = ReplaceFileCorruptionHandler(produceNewData = { ChannelSet() }),
-            scope = scope,
+            scope = get(named(DATASTORE_SCOPE)),
         )
     }
 
@@ -250,7 +202,7 @@ private fun desktopProtoDataStoreModule() = module {
                 producePath = { "$protoDir/local_stats.pb".toPath() },
             ),
             corruptionHandler = ReplaceFileCorruptionHandler(produceNewData = { LocalStats() }),
-            scope = scope,
+            scope = get(named(DATASTORE_SCOPE)),
         )
     }
 }

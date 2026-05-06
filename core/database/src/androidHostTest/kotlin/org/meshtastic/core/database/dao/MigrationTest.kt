@@ -16,14 +16,13 @@
  */
 package org.meshtastic.core.database.dao
 
-import androidx.room.Room
+import androidx.room3.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import okio.ByteString.Companion.toByteString
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,6 +35,7 @@ import org.meshtastic.core.model.DataPacket
 import org.meshtastic.proto.ChannelSettings
 import org.meshtastic.proto.PortNum
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
 
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
@@ -59,7 +59,7 @@ class MigrationTest {
         )
 
     @Before
-    fun createDb(): Unit = runBlocking {
+    fun createDb(): Unit = runTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         database =
             Room.inMemoryDatabaseBuilder<MeshtasticDatabase>(
@@ -77,7 +77,7 @@ class MigrationTest {
     }
 
     @Test
-    fun testMigrateChannelsByPSK_duplicatePSK() = runBlocking {
+    fun testMigrateChannelsByPSK_duplicatePSK() = runTest {
         // PSK \"AQ==\" is base64 for single byte 0x01
         val pskBytes = byteArrayOf(0x01).toByteString()
 
@@ -99,11 +99,11 @@ class MigrationTest {
 
         // Check packet channel
         val p = getFirstPacket()
-        assertEquals("Packet should remain on channel 0", 0, p.data.channel)
+        assertEquals(0, p.data.channel, "Packet should remain on channel 0")
     }
 
     @Test
-    fun testMigrateChannelsByPSK_reorder() = runBlocking {
+    fun testMigrateChannelsByPSK_reorder() = runTest {
         val pskA = byteArrayOf(0x01).toByteString()
         val pskB = byteArrayOf(0x02).toByteString()
 
@@ -122,7 +122,7 @@ class MigrationTest {
     }
 
     @Test
-    fun testMigrateChannelsByPSK_disambiguateByName() = runBlocking {
+    fun testMigrateChannelsByPSK_disambiguateByName() = runTest {
         val pskA = byteArrayOf(0x01).toByteString()
 
         insertPacket(channel = 0, text = "Msg A1")
@@ -136,12 +136,12 @@ class MigrationTest {
         packetDao.migrateChannelsByPSK(oldSettings, newSettings)
 
         val packets = getAllPackets()
-        assertEquals("Msg A1 should move to index 1", 1, packets.find { it.data.text == "Msg A1" }?.data?.channel)
-        assertEquals("Msg A2 should move to index 0", 0, packets.find { it.data.text == "Msg A2" }?.data?.channel)
+        assertEquals(1, packets.find { it.data.text == "Msg A1" }?.data?.channel, "Msg A1 should move to index 1")
+        assertEquals(0, packets.find { it.data.text == "Msg A2" }?.data?.channel, "Msg A2 should move to index 0")
     }
 
     @Test
-    fun testMigrateChannelsByPSK_preferSameIndexIfStillAmbiguous() = runBlocking {
+    fun testMigrateChannelsByPSK_preferSameIndexIfStillAmbiguous() = runTest {
         val pskA = byteArrayOf(0x01).toByteString()
 
         insertPacket(channel = 0, text = "Msg A")
@@ -154,7 +154,7 @@ class MigrationTest {
         packetDao.migrateChannelsByPSK(oldSettings, newSettings)
 
         val p = getFirstPacket()
-        assertEquals("Should prefer keeping same index 0", 0, p.data.channel)
+        assertEquals(0, p.data.channel, "Should prefer keeping same index 0")
     }
 
     private suspend fun insertPacket(channel: Int, text: String) {

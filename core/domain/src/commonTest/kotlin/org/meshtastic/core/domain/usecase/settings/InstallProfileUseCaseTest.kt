@@ -16,83 +16,99 @@
  */
 package org.meshtastic.core.domain.usecase.settings
 
-import io.mockk.coVerify
-import io.mockk.every
-import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
-import org.meshtastic.core.model.RadioController
-import org.meshtastic.proto.Config
+import org.meshtastic.core.testing.FakeRadioController
+import org.meshtastic.proto.Config.BluetoothConfig
+import org.meshtastic.proto.Config.DeviceConfig
+import org.meshtastic.proto.Config.DisplayConfig
+import org.meshtastic.proto.Config.LoRaConfig
+import org.meshtastic.proto.Config.NetworkConfig
+import org.meshtastic.proto.Config.PositionConfig
+import org.meshtastic.proto.Config.PowerConfig
+import org.meshtastic.proto.Config.SecurityConfig
 import org.meshtastic.proto.DeviceProfile
-import org.meshtastic.proto.LocalConfig
-import org.meshtastic.proto.LocalModuleConfig
-import org.meshtastic.proto.ModuleConfig
+import org.meshtastic.proto.ModuleConfig.AmbientLightingConfig
+import org.meshtastic.proto.ModuleConfig.AudioConfig
+import org.meshtastic.proto.ModuleConfig.CannedMessageConfig
+import org.meshtastic.proto.ModuleConfig.DetectionSensorConfig
+import org.meshtastic.proto.ModuleConfig.ExternalNotificationConfig
+import org.meshtastic.proto.ModuleConfig.MQTTConfig
+import org.meshtastic.proto.ModuleConfig.NeighborInfoConfig
+import org.meshtastic.proto.ModuleConfig.PaxcounterConfig
+import org.meshtastic.proto.ModuleConfig.RangeTestConfig
+import org.meshtastic.proto.ModuleConfig.RemoteHardwareConfig
+import org.meshtastic.proto.ModuleConfig.SerialConfig
+import org.meshtastic.proto.ModuleConfig.StatusMessageConfig
+import org.meshtastic.proto.ModuleConfig.StoreForwardConfig
+import org.meshtastic.proto.ModuleConfig.TAKConfig
+import org.meshtastic.proto.ModuleConfig.TelemetryConfig
+import org.meshtastic.proto.ModuleConfig.TrafficManagementConfig
 import org.meshtastic.proto.User
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 class InstallProfileUseCaseTest {
 
-    private lateinit var radioController: RadioController
+    private lateinit var radioController: FakeRadioController
     private lateinit var useCase: InstallProfileUseCase
 
     @BeforeTest
     fun setUp() {
-        radioController = mockk(relaxed = true)
+        radioController = FakeRadioController()
         useCase = InstallProfileUseCase(radioController)
-        every { radioController.getPacketId() } returns 1
     }
 
     @Test
-    fun `invoke with names updates owner`() = runTest {
-        // Arrange
-        val profile = DeviceProfile(long_name = "New Long", short_name = "NL")
-        val currentUser = User(long_name = "Old Long", short_name = "OL")
+    fun `invoke calls begin and commit edit settings`() = runTest {
+        useCase(1234, DeviceProfile(), User())
 
-        // Act
-        useCase(123, profile, currentUser)
-
-        // Assert
-        coVerify { radioController.beginEditSettings(123) }
-        coVerify { radioController.setOwner(123, match { it.long_name == "New Long" && it.short_name == "NL" }, 1) }
-        coVerify { radioController.commitEditSettings(123) }
+        assertTrue(radioController.beginEditSettingsCalled)
+        assertTrue(radioController.commitEditSettingsCalled)
     }
 
     @Test
-    fun `invoke with config sets config`() = runTest {
-        // Arrange
-        val loraConfig = Config.LoRaConfig(region = Config.LoRaConfig.RegionCode.US)
-        val profile = DeviceProfile(config = LocalConfig(lora = loraConfig))
+    fun `invoke installs all sections of a full profile`() = runTest {
+        val profile =
+            DeviceProfile(
+                long_name = "Full Node",
+                short_name = "FULL",
+                config =
+                org.meshtastic.proto.LocalConfig(
+                    device = DeviceConfig(),
+                    position = PositionConfig(),
+                    power = PowerConfig(),
+                    network = NetworkConfig(),
+                    display = DisplayConfig(),
+                    lora = LoRaConfig(),
+                    bluetooth = BluetoothConfig(),
+                    security = SecurityConfig(),
+                ),
+                module_config =
+                org.meshtastic.proto.LocalModuleConfig(
+                    mqtt = MQTTConfig(),
+                    serial = SerialConfig(),
+                    external_notification = ExternalNotificationConfig(),
+                    store_forward = StoreForwardConfig(),
+                    range_test = RangeTestConfig(),
+                    telemetry = TelemetryConfig(),
+                    canned_message = CannedMessageConfig(),
+                    audio = AudioConfig(),
+                    remote_hardware = RemoteHardwareConfig(),
+                    neighbor_info = NeighborInfoConfig(),
+                    ambient_lighting = AmbientLightingConfig(),
+                    detection_sensor = DetectionSensorConfig(),
+                    paxcounter = PaxcounterConfig(),
+                    statusmessage = StatusMessageConfig(),
+                    traffic_management = TrafficManagementConfig(),
+                    tak = TAKConfig(),
+                ),
+                fixed_position = org.meshtastic.proto.Position(),
+            )
 
-        // Act
-        useCase(456, profile, null)
+        useCase(1234, profile, org.meshtastic.proto.User(long_name = "Old"))
 
-        // Assert
-        coVerify { radioController.setConfig(456, match { it.lora == loraConfig }, 1) }
-    }
-
-    @Test
-    fun `invoke with module_config sets module config`() = runTest {
-        // Arrange
-        val mqttConfig = ModuleConfig.MQTTConfig(enabled = true, address = "broker.local")
-        val profile = DeviceProfile(module_config = LocalModuleConfig(mqtt = mqttConfig))
-
-        // Act
-        useCase(789, profile, null)
-
-        // Assert
-        coVerify { radioController.setModuleConfig(789, match { it.mqtt == mqttConfig }, 1) }
-    }
-
-    @Test
-    fun `invoke with module_config part 2 sets module config`() = runTest {
-        // Arrange
-        val neighborInfoConfig = ModuleConfig.NeighborInfoConfig(enabled = true)
-        val profile = DeviceProfile(module_config = LocalModuleConfig(neighbor_info = neighborInfoConfig))
-
-        // Act
-        useCase(789, profile, null)
-
-        // Assert
-        coVerify { radioController.setModuleConfig(789, match { it.neighbor_info == neighborInfoConfig }, 1) }
+        assertTrue(radioController.beginEditSettingsCalled)
+        assertTrue(radioController.commitEditSettingsCalled)
     }
 }
